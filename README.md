@@ -130,15 +130,3 @@ SignalR hub: `/hubs/shopping-list` — join with `JoinList(listId)`; events: `It
 | `dotnet run` build / file lock errors | Stop the running `ShoppingList.Api` process first |
 | OCR upload 503 | Run `.\scripts\download-tessdata.ps1` |
 | Create list does nothing | Ensure API is running; check browser console / error banner |
-
-## Pushing to GitHub
-
-```powershell
-git init
-git add .
-git commit -m "Initial commit"
-git remote add origin <your-repo-url>
-git push -u origin main
-```
-
-Do **not** commit `appsettings.Development.local.json`, `client/.env`, `node_modules/`, `bin/`, `obj/`, or `tessdata/*.traineddata` — all are covered by `.gitignore`.

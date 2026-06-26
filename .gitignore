@@ -15,10 +15,8 @@ artifacts/
 
 ## Secrets & local config
 appsettings.*.local.json
-**/.env
-**/.env.*
+**/.env*
 !**/.env.example
-client/.env
 
 ## Frontend
 node_modules/
