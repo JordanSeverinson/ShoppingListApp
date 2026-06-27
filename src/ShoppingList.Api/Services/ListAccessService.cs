@@ -21,6 +21,14 @@ public class ListAccessService(ApplicationDbContext db)
             .Include(l => l.Items)
             .FirstOrDefaultAsync(l => l.Id == listId, cancellationToken);
 
+    public async Task<ShoppingListEntity?> GetAccessibleListMetadataAsync(
+        Guid listId,
+        Guid userId,
+        CancellationToken cancellationToken = default) =>
+        await AccessibleLists(userId)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(l => l.Id == listId, cancellationToken);
+
     public static ListSummaryDto ToSummary(ShoppingListEntity list, Guid userId) =>
         new(
             list.Id,

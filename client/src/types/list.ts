@@ -13,8 +13,6 @@ export interface ListSummary {
   name: string;
   shareCode: string;
   isArchived: boolean;
-  isOwner: boolean;
-  updatedAt: string | null;
   itemCount: number;
   checkedCount: number;
 }

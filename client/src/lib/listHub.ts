@@ -13,14 +13,10 @@ export type ConnectionStatus =
   | "reconnecting"
   | "disconnected";
 
-export function hubUrl(): string {
-  const base = import.meta.env.VITE_API_URL ?? "";
-  return `${base}${HUB_PATH}`;
-}
-
 export function createListHubConnection(): HubConnection {
+  const base = import.meta.env.VITE_API_URL ?? "";
   return new HubConnectionBuilder()
-    .withUrl(hubUrl())
+    .withUrl(`${base}${HUB_PATH}`)
     .withAutomaticReconnect([0, 2000, 5000, 10000, 30000])
     .configureLogging(
       import.meta.env.DEV ? LogLevel.Information : LogLevel.Warning,

@@ -25,7 +25,6 @@ interface ShoppingListContextValue {
   loading: boolean;
   error: string | null;
   connectionStatus: ConnectionStatus;
-  refresh: () => Promise<void>;
   renameList: (name: string) => Promise<void>;
   addItem: (payload: CreateItemPayload) => Promise<void>;
   toggleItem: (itemId: string, isChecked: boolean) => Promise<void>;
@@ -194,10 +193,32 @@ export function ShoppingListProvider({
       if (!canEdit) {
         return;
       }
-      const updated = await listsApi.updateItem(listId, itemId, { isChecked });
-      patchItems((items) => upsertItem(items, updated));
+
+      const current = detail?.items.find((item) => item.id === itemId);
+      if (!current || current.isChecked === isChecked) {
+        return;
+      }
+
+      const previousChecked = current.isChecked;
+
+      patchItems((items) =>
+        items.map((item) =>
+          item.id === itemId ? { ...item, isChecked } : item,
+        ),
+      );
+
+      try {
+        await listsApi.updateItem(listId, itemId, { isChecked });
+      } catch (err) {
+        patchItems((items) =>
+          items.map((item) =>
+            item.id === itemId ? { ...item, isChecked: previousChecked } : item,
+          ),
+        );
+        setError(err instanceof Error ? err.message : "Could not update item");
+      }
     },
-    [canEdit, listId, patchItems],
+    [canEdit, detail?.items, listId, patchItems],
   );
 
   const updateItem = useCallback(
@@ -250,7 +271,6 @@ export function ShoppingListProvider({
       loading,
       error,
       connectionStatus,
-      refresh,
       renameList,
       addItem,
       toggleItem,
@@ -266,7 +286,6 @@ export function ShoppingListProvider({
       loading,
       error,
       connectionStatus,
-      refresh,
       renameList,
       addItem,
       toggleItem,

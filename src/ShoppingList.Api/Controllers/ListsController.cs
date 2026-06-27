@@ -261,6 +261,11 @@ public class ListsController(
         [FromBody] UpdateItemRequest request,
         CancellationToken cancellationToken)
     {
+        if (IsToggleOnly(request))
+        {
+            return await ToggleItemAsync(listId, itemId, request.IsChecked!.Value, cancellationToken);
+        }
+
         var list = await LoadEditableListAsync(listId, cancellationToken);
         if (list.Result is not null)
         {
@@ -448,6 +453,70 @@ public class ListsController(
         return list;
     }
 
+    private async Task<ActionResult<ListItemEventDto>> ToggleItemAsync(
+        Guid listId,
+        Guid itemId,
+        bool isChecked,
+        CancellationToken cancellationToken)
+    {
+        var userId = currentUser.GetUserId();
+        var list = await listAccess.GetAccessibleListMetadataAsync(listId, userId, cancellationToken);
+
+        if (list is null)
+        {
+            return NotFound(new { error = "List not found." });
+        }
+
+        var editableCheck = ListAccessService.RequireEditable(list);
+        if (editableCheck is not null)
+        {
+            return editableCheck;
+        }
+
+        var now = DateTime.UtcNow;
+        var rowsUpdated = await db.ListItems
+            .Where(i => i.ShoppingListId == listId && i.Id == itemId && i.IsChecked != isChecked)
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(i => i.IsChecked, isChecked)
+                    .SetProperty(i => i.UpdatedAt, now),
+                cancellationToken);
+
+        if (rowsUpdated == 0)
+        {
+            var existing = await db.ListItems
+                .AsNoTracking()
+                .FirstOrDefaultAsync(i => i.ShoppingListId == listId && i.Id == itemId, cancellationToken);
+
+            if (existing is null)
+            {
+                return NotFound(new { error = "Item not found." });
+            }
+
+            return Ok(ToEventDto(existing));
+        }
+
+        await db.ShoppingLists
+            .Where(l => l.Id == listId)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(l => l.UpdatedAt, now),
+                cancellationToken);
+
+        var item = await db.ListItems
+            .AsNoTracking()
+            .FirstAsync(i => i.ShoppingListId == listId && i.Id == itemId, cancellationToken);
+
+        await ShoppingListHub.ItemToggled(hubContext, listId, itemId, isChecked);
+
+        return Ok(ToEventDto(item));
+    }
+
+    private static bool IsToggleOnly(UpdateItemRequest request) =>
+        request.IsChecked is not null
+        && request.Name is null
+        && request.Quantity is null
+        && request.Category is null;
+
     private static readonly HashSet<string> AllowedContentTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         "image/jpeg", "image/jpg", "image/png", "image/webp", "image/bmp", "image/tiff"
@@ -456,8 +525,3 @@ public class ListsController(
     private static ListItemEventDto ToEventDto(ListItem item) =>
         new(item.Id, item.ShoppingListId, item.Name, item.Quantity, item.Category, item.IsChecked, item.SortOrder);
 }
-
-public record UploadImageResponse(
-    Guid ListId,
-    IReadOnlyList<ListItemEventDto> Items,
-    string Message);

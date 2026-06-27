@@ -9,7 +9,7 @@ namespace ShoppingList.Api.Persistence;
 public static class DevelopmentDataSeeder
 {
     public static readonly Guid DemoListId = Guid.Parse("11111111-1111-1111-1111-111111111111");
-    public static readonly Guid ArchivedListsId = Guid.Parse("33333333-3333-3333-3333-333333333333");
+    public static readonly Guid DemoArchivedListId = Guid.Parse("33333333-3333-3333-3333-333333333333");
     public static readonly Guid DemoUserId = Guid.Parse("22222222-2222-2222-2222-222222222222");
 
     public static async Task SeedAsync(ApplicationDbContext db, CancellationToken cancellationToken = default)
@@ -62,7 +62,7 @@ public static class DevelopmentDataSeeder
 
         db.ShoppingLists.Add(new ShoppingListEntity
         {
-            Id = ArchivedListsId,
+            Id = DemoArchivedListId,
             Name = "Last week's shop",
             OwnerId = DemoUserId,
             ShareCode = ShareCodeGenerator.Generate(),

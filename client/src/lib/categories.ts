@@ -8,7 +8,7 @@ export const CATEGORIES = [
   "Other",
 ] as const;
 
-export type Category = (typeof CATEGORIES)[number];
+type Category = (typeof CATEGORIES)[number];
 
 const KEYWORD_CATEGORY: Array<{ pattern: RegExp; category: Category }> = [
   { pattern: /\b(lettuce|tomato|onion|garlic|apple|banana|carrot|spinach|broccoli|avocado|lemon|berry|fruit|vegetable|salad)\b/i, category: "Produce" },

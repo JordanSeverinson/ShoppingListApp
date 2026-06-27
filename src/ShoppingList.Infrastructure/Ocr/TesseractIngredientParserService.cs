@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ShoppingList.Application.Parsing;
@@ -18,23 +17,10 @@ public sealed class TesseractIngredientParserService(
     IOptions<TesseractOptions> options,
     ILogger<TesseractIngredientParserService> logger) : IIngredientParserService
 {
-    private static readonly Regex DataUrlPrefix = new(
-        @"^data:image\/[a-zA-Z+]+;base64,",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase);
-
     public Task<IReadOnlyList<ParsedIngredientDto>> ParseFromStreamAsync(
         Stream imageStream,
         CancellationToken cancellationToken = default) =>
         Task.Run(() => ParseImageBytes(ReadAllBytes(imageStream), cancellationToken), cancellationToken);
-
-    public Task<IReadOnlyList<ParsedIngredientDto>> ParseFromBase64Async(
-        string base64Image,
-        CancellationToken cancellationToken = default)
-    {
-        var payload = DataUrlPrefix.Replace(base64Image.Trim(), string.Empty);
-        var bytes = Convert.FromBase64String(payload);
-        return Task.Run(() => ParseImageBytes(bytes, cancellationToken), cancellationToken);
-    }
 
     private IReadOnlyList<ParsedIngredientDto> ParseImageBytes(byte[] imageBytes, CancellationToken cancellationToken)
     {

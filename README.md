@@ -121,6 +121,12 @@ Set via `client/.env` → `VITE_USER_ID`.
 
 SignalR hub: `/hubs/shopping-list` — join with `JoinList(listId)`; events: `ItemAdded`, `ItemUpdated`, `ItemToggled`, `ItemDeleted`, `ItemsBulkAdded`.
 
+## Tests
+
+```powershell
+dotnet test
+```
+
 ## Troubleshooting
 
 | Problem | Fix |

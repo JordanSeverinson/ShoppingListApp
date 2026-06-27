@@ -37,3 +37,8 @@ public record UpdateItemRequest(
     string? Quantity,
     string? Category,
     bool? IsChecked);
+
+public record UploadImageResponse(
+    Guid ListId,
+    IReadOnlyList<ListItemEventDto> Items,
+    string Message);

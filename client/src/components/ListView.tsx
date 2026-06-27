@@ -1,5 +1,5 @@
 import { Check, Pencil, Trash2, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { useShoppingList } from "../context/ShoppingListContext";
 import { CATEGORIES } from "../lib/categories";
 import type { ListItem } from "../types/list";
@@ -28,27 +28,42 @@ function groupByCategory(items: ListItem[]): Map<string, ListItem[]> {
   );
 }
 
-function ItemRow({ item, readOnly }: { item: ListItem; readOnly: boolean }) {
-  const { toggleItem, updateItem, removeItem } = useShoppingList();
+function itemsEqual(a: ListItem, b: ListItem): boolean {
+  return (
+    a.id === b.id
+    && a.isChecked === b.isChecked
+    && a.name === b.name
+    && a.quantity === b.quantity
+    && a.category === b.category
+  );
+}
+
+const ItemRow = memo(function ItemRow({
+  item,
+  readOnly,
+  onToggle,
+  onUpdate,
+  onRemove,
+}: {
+  item: ListItem;
+  readOnly: boolean;
+  onToggle: (itemId: string, isChecked: boolean) => void;
+  onUpdate: (
+    itemId: string,
+    patch: Partial<Pick<ListItem, "name" | "quantity" | "category">>,
+  ) => Promise<void>;
+  onRemove: (itemId: string) => Promise<void>;
+}) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(item.name);
   const [quantity, setQuantity] = useState(item.quantity ?? "");
   const [category, setCategory] = useState(item.category);
   const [busy, setBusy] = useState(false);
 
-  async function handleToggle() {
-    setBusy(true);
-    try {
-      await toggleItem(item.id, !item.isChecked);
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function handleSave() {
     setBusy(true);
     try {
-      await updateItem(item.id, {
+      await onUpdate(item.id, {
         name: name.trim(),
         quantity: quantity.trim() || null,
         category,
@@ -62,7 +77,7 @@ function ItemRow({ item, readOnly }: { item: ListItem; readOnly: boolean }) {
   async function handleDelete() {
     setBusy(true);
     try {
-      await removeItem(item.id);
+      await onRemove(item.id);
     } finally {
       setBusy(false);
     }
@@ -127,8 +142,8 @@ function ItemRow({ item, readOnly }: { item: ListItem; readOnly: boolean }) {
       <input
         type="checkbox"
         checked={item.isChecked}
-        onChange={() => void handleToggle()}
-        disabled={busy || readOnly}
+        onChange={() => onToggle(item.id, !item.isChecked)}
+        disabled={readOnly}
         className="h-5 w-5 shrink-0 rounded border-border text-brand-600 focus:ring-brand-500 disabled:cursor-default"
         aria-label={`Mark ${item.name} as ${item.isChecked ? "not done" : "done"}`}
       />
@@ -165,13 +180,16 @@ function ItemRow({ item, readOnly }: { item: ListItem; readOnly: boolean }) {
       )}
     </li>
   );
-}
+}, (prev, next) => prev.readOnly === next.readOnly && itemsEqual(prev.item, next.item));
 
 export function ListView({ readOnly = false }: { readOnly?: boolean }) {
-  const { items, loading, error } = useShoppingList();
+  const { items, loading, error, toggleItem, updateItem, removeItem } = useShoppingList();
 
   const grouped = useMemo(() => groupByCategory(items), [items]);
-  const checkedCount = items.filter((item) => item.isChecked).length;
+  const checkedCount = useMemo(
+    () => items.reduce((count, item) => count + (item.isChecked ? 1 : 0), 0),
+    [items],
+  );
 
   if (loading) {
     return (
@@ -214,7 +232,14 @@ export function ListView({ readOnly = false }: { readOnly?: boolean }) {
           </h2>
           <ul className="space-y-2">
             {categoryItems.map((item) => (
-              <ItemRow key={item.id} item={item} readOnly={readOnly} />
+              <ItemRow
+                key={item.id}
+                item={item}
+                readOnly={readOnly}
+                onToggle={toggleItem}
+                onUpdate={updateItem}
+                onRemove={removeItem}
+              />
             ))}
           </ul>
         </section>

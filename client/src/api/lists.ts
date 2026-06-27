@@ -10,47 +10,6 @@ import type {
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "";
 
-function readString(raw: Record<string, unknown>, camel: string, pascal: string): string {
-  const value = raw[camel] ?? raw[pascal];
-  return value == null ? "" : String(value);
-}
-
-function readNumber(raw: Record<string, unknown>, camel: string, pascal: string): number {
-  const value = raw[camel] ?? raw[pascal];
-  return typeof value === "number" ? value : Number(value ?? 0);
-}
-
-function readBool(raw: Record<string, unknown>, camel: string, pascal: string): boolean {
-  const value = raw[camel] ?? raw[pascal];
-  return Boolean(value);
-}
-
-function normalizeSummary(raw: Record<string, unknown>): ListSummary {
-  return {
-    id: readString(raw, "id", "Id"),
-    name: readString(raw, "name", "Name"),
-    shareCode: readString(raw, "shareCode", "ShareCode"),
-    isArchived: readBool(raw, "isArchived", "IsArchived"),
-    isOwner: readBool(raw, "isOwner", "IsOwner"),
-    updatedAt: (raw.updatedAt ?? raw.UpdatedAt ?? null) as string | null,
-    itemCount: readNumber(raw, "itemCount", "ItemCount"),
-    checkedCount: readNumber(raw, "checkedCount", "CheckedCount"),
-  };
-}
-
-function normalizeListSummaryResponse(raw: Record<string, unknown>): ListSummaryResponse {
-  const shared = (raw.sharedLists ?? raw.SharedLists ?? []) as unknown[];
-  const archived = (
-    raw.archivedLists
-    ?? []
-  ) as unknown[];
-
-  return {
-    sharedLists: shared.map((entry) => normalizeSummary(entry as Record<string, unknown>)),
-    archivedLists: archived.map((entry) => normalizeSummary(entry as Record<string, unknown>)),
-  };
-}
-
 function apiHeaders(): HeadersInit {
   return {
     "Content-Type": "application/json",
@@ -76,43 +35,36 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     return undefined as T;
   }
 
-  const json = (await response.json()) as unknown;
-  return json as T;
+  return (await response.json()) as T;
 }
 
-async function requestSummary(path: string, init?: RequestInit): Promise<ListSummary> {
-  const json = (await request(path, init)) as Record<string, unknown>;
-  return normalizeSummary(json);
-}
-
-export async function fetchMyLists(): Promise<ListSummaryResponse> {
-  const json = (await request("/api/lists")) as Record<string, unknown>;
-  return normalizeListSummaryResponse(json);
+export function fetchMyLists(): Promise<ListSummaryResponse> {
+  return request<ListSummaryResponse>("/api/lists");
 }
 
 export function createList(name: string): Promise<ListSummary> {
-  return requestSummary("/api/lists", {
+  return request<ListSummary>("/api/lists", {
     method: "POST",
     body: JSON.stringify({ name }),
   });
 }
 
 export function joinList(shareCode: string): Promise<ListSummary> {
-  return requestSummary("/api/lists/join", {
+  return request<ListSummary>("/api/lists/join", {
     method: "POST",
     body: JSON.stringify({ shareCode: shareCode.trim().toUpperCase() }),
   });
 }
 
 export function renameList(listId: string, name: string): Promise<ListSummary> {
-  return requestSummary(`/api/lists/${listId}`, {
+  return request<ListSummary>(`/api/lists/${listId}`, {
     method: "PATCH",
     body: JSON.stringify({ name }),
   });
 }
 
 export function archiveList(listId: string): Promise<ListSummary> {
-  return requestSummary(`/api/lists/${listId}/archive`, { method: "POST" });
+  return request<ListSummary>(`/api/lists/${listId}/archive`, { method: "POST" });
 }
 
 export function fetchList(listId: string): Promise<ListDetail> {
