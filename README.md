@@ -93,7 +93,7 @@ tests/                        # Unit tests
 
 - **Landing page** — create lists, join with an 11-character share code, view active and archived lists
 - **List detail** — add/edit/remove items, real-time updates across tabs, copy share code
-- **Archive** — move finished lists to read-only history (name still editable)
+- **Archive** — move finished lists to read-only archive (name still editable)
 - **OCR upload** — import ingredients from recipe screenshots
 
 ### Demo user (Development)
@@ -108,7 +108,7 @@ Set via `client/.env` → `VITE_USER_ID`.
 
 | Method | Route | Purpose |
 |--------|-------|---------|
-| GET | `/api/lists` | My shared + historical lists |
+| GET | `/api/lists` | My shared + archived lists |
 | POST | `/api/lists` | Create list (returns share code) |
 | POST | `/api/lists/join` | Join by share code |
 | GET | `/api/lists/{listId}` | List detail + items |

@@ -25,7 +25,7 @@ export function ListCard({
           {list.isArchived ? (
             <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted">
               <History className="h-3.5 w-3.5" aria-hidden />
-              Historical · view only
+              Archived · view only
             </div>
           ) : (
             <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-brand-700">
@@ -60,7 +60,7 @@ export function ListCard({
             className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-muted transition hover:border-amber-300 hover:bg-amber-50 hover:text-amber-900"
           >
             <Archive className="h-4 w-4" aria-hidden />
-            Move to history
+            Archive
           </button>
         )}
       </div>

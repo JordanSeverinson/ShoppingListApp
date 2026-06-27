@@ -8,7 +8,7 @@ import type { ListSummary } from "../types/list";
 export function LandingPage() {
   const navigate = useNavigate();
   const [sharedLists, setSharedLists] = useState<ListSummary[]>([]);
-  const [historicalLists, setHistoricalLists] = useState<ListSummary[]>([]);
+  const [archivedLists, setArchivedLists] = useState<ListSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newListName, setNewListName] = useState("");
@@ -21,7 +21,7 @@ export function LandingPage() {
     try {
       const data = await listsApi.fetchMyLists();
       setSharedLists(data.sharedLists);
-      setHistoricalLists(data.historicalLists);
+      setArchivedLists(data.archivedLists);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load lists");
     } finally {
@@ -82,8 +82,13 @@ export function LandingPage() {
   }
 
   async function handleArchive(listId: string) {
-    await listsApi.archiveList(listId);
-    await load();
+    setError(null);
+    try {
+      await listsApi.archiveList(listId);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not archive list");
+    }
   }
 
   return (
@@ -97,7 +102,7 @@ export function LandingPage() {
           Your lists
         </h1>
         <p className="mt-2 max-w-xl text-muted">
-          Manage active shared lists with your household, and revisit past shops in history.
+          Manage active shared lists with your household.
         </p>
       </header>
 
@@ -182,17 +187,17 @@ export function LandingPage() {
           </section>
 
           <section>
-            <h2 className="mb-4 text-lg font-semibold text-ink">Historical grocery lists</h2>
+            <h2 className="mb-4 text-lg font-semibold text-ink">Archived grocery lists</h2>
             <p className="mb-4 text-sm text-muted">
-              Past lists are read-only. You can still rename them for your records.
+              View past lists or rename them for your records.
             </p>
-            {historicalLists.length === 0 ? (
+            {archivedLists.length === 0 ? (
               <p className="rounded-2xl border border-dashed border-border px-6 py-10 text-center text-muted">
-                No historical lists yet. Archive a shared list when you are done shopping.
+                No archived lists yet. Archive a shared list when you are done shopping.
               </p>
             ) : (
               <div className="space-y-4">
-                {historicalLists.map((list) => (
+                {archivedLists.map((list) => (
                   <ListCard key={list.id} list={list} onRename={handleRename} />
                 ))}
               </div>

@@ -40,11 +40,14 @@ function normalizeSummary(raw: Record<string, unknown>): ListSummary {
 
 function normalizeListSummaryResponse(raw: Record<string, unknown>): ListSummaryResponse {
   const shared = (raw.sharedLists ?? raw.SharedLists ?? []) as unknown[];
-  const historical = (raw.historicalLists ?? raw.HistoricalLists ?? []) as unknown[];
+  const archived = (
+    raw.archivedLists
+    ?? []
+  ) as unknown[];
 
   return {
     sharedLists: shared.map((entry) => normalizeSummary(entry as Record<string, unknown>)),
-    historicalLists: historical.map((entry) => normalizeSummary(entry as Record<string, unknown>)),
+    archivedLists: archived.map((entry) => normalizeSummary(entry as Record<string, unknown>)),
   };
 }
 

@@ -42,12 +42,12 @@ public class ListsController(
             .Select(l => ListAccessService.ToSummary(l, userId))
             .ToList();
 
-        var historical = lists
+        var archived = lists
             .Where(l => l.IsArchived)
             .Select(l => ListAccessService.ToSummary(l, userId))
             .ToList();
 
-        return Ok(new ListSummaryResponse(shared, historical));
+        return Ok(new ListSummaryResponse(shared, archived));
     }
 
     [HttpPost]

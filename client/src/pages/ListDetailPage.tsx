@@ -32,7 +32,7 @@ function ListDetailContent() {
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <div className="inline-flex items-center gap-2 rounded-full bg-brand-100 px-3 py-1 text-xs font-medium text-brand-700">
             <ShoppingCart className="h-3.5 w-3.5" aria-hidden />
-            {isArchived ? "Historical list" : "Shared list"}
+            {isArchived ? "Archived list" : "Shared list"}
           </div>
           {isArchived ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2.5 py-1 text-xs font-medium text-muted">

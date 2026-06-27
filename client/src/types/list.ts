@@ -21,7 +21,7 @@ export interface ListSummary {
 
 export interface ListSummaryResponse {
   sharedLists: ListSummary[];
-  historicalLists: ListSummary[];
+  archivedLists: ListSummary[];
 }
 
 export interface ListDetail {

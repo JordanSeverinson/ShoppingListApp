@@ -4,7 +4,7 @@ namespace ShoppingList.Api.Contracts;
 
 public record ListSummaryResponse(
     IReadOnlyList<ListSummaryDto> SharedLists,
-    IReadOnlyList<ListSummaryDto> HistoricalLists);
+    IReadOnlyList<ListSummaryDto> ArchivedLists);
 
 public record ListSummaryDto(
     Guid Id,
