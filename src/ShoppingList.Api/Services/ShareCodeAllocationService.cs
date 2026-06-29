@@ -11,11 +11,15 @@ public class ShareCodeAllocationService(ApplicationDbContext db)
         for (var attempt = 0; attempt < 32; attempt++)
         {
             var code = ShareCodeGenerator.Generate();
-            var exists = await db.ShoppingLists
+            var existsInLists = await db.ShoppingLists
                 .AsNoTracking()
                 .AnyAsync(l => l.ShareCode == code, cancellationToken);
 
-            if (!exists)
+            var existsInRecipes = await db.Recipes
+                .AsNoTracking()
+                .AnyAsync(r => r.ShareCode == code, cancellationToken);
+
+            if (!existsInLists && !existsInRecipes)
             {
                 return code;
             }

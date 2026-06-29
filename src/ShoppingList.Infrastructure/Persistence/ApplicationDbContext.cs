@@ -10,6 +10,9 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<ShoppingListEntity> ShoppingLists => Set<ShoppingListEntity>();
     public DbSet<ListItem> ListItems => Set<ListItem>();
     public DbSet<SharedPermission> SharedPermissions => Set<SharedPermission>();
+    public DbSet<Recipe> Recipes => Set<Recipe>();
+    public DbSet<RecipeIngredient> RecipeIngredients => Set<RecipeIngredient>();
+    public DbSet<RecipeSharedPermission> RecipeSharedPermissions => Set<RecipeSharedPermission>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -7,7 +7,7 @@ namespace ShoppingList.Api.Hubs;
 /// <summary>
 /// Real-time channel for collaborative list updates.
 /// Clients join a list group via <see cref="JoinList"/> and receive:
-/// ItemAdded, ItemUpdated, ItemToggled, ItemDeleted, ItemsBulkAdded.
+/// ItemAdded, ItemUpdated, ItemToggled, ItemDeleted, ItemsBulkAdded, ItemsBulkDeleted.
 /// </summary>
 [AllowAnonymous]
 public class ShoppingListHub : Hub
@@ -38,4 +38,14 @@ public class ShoppingListHub : Hub
 
     public static Task ItemsBulkAdded(IHubContext<ShoppingListHub> hub, Guid listId, IReadOnlyList<ListItemEventDto> items) =>
         hub.Clients.Group(GroupName(listId)).SendAsync("ItemsBulkAdded", items);
+
+    public static Task ItemsBulkToggled(
+        IHubContext<ShoppingListHub> hub,
+        Guid listId,
+        IReadOnlyList<Guid> itemIds,
+        bool isChecked) =>
+        hub.Clients.Group(GroupName(listId)).SendAsync("ItemsBulkToggled", itemIds, isChecked);
+
+    public static Task ItemsBulkDeleted(IHubContext<ShoppingListHub> hub, Guid listId, IReadOnlyList<Guid> itemIds) =>
+        hub.Clients.Group(GroupName(listId)).SendAsync("ItemsBulkDeleted", itemIds);
 }

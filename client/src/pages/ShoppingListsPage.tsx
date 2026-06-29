@@ -1,11 +1,11 @@
-import { Link2, Plus, ShoppingCart } from "lucide-react";
+import { ArrowLeft, Link2, Plus, ShoppingCart } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import * as listsApi from "../api/lists";
 import { ListCard } from "../components/ListCard";
 import type { ListSummary } from "../types/list";
 
-export function LandingPage() {
+export function ShoppingListsPage() {
   const navigate = useNavigate();
   const [sharedLists, setSharedLists] = useState<ListSummary[]>([]);
   const [archivedLists, setArchivedLists] = useState<ListSummary[]>([]);
@@ -93,6 +93,14 @@ export function LandingPage() {
 
   return (
     <div className="mx-auto min-h-screen max-w-3xl px-4 py-8 sm:px-6 sm:py-12">
+      <Link
+        to="/"
+        className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-muted hover:text-brand-700"
+      >
+        <ArrowLeft className="h-4 w-4" aria-hidden />
+        Home
+      </Link>
+
       <header className="mb-10">
         <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-brand-100 px-3 py-1 text-xs font-medium text-brand-700">
           <ShoppingCart className="h-3.5 w-3.5" aria-hidden />

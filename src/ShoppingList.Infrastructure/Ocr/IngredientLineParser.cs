@@ -22,6 +22,7 @@ internal static partial class IngredientLineParser
 
     private static readonly (Regex Pattern, string Category)[] CategoryRules =
     [
+        (SeasoningsPattern(), "Seasonings"),
         (ProducePattern(), "Produce"),
         (DairyPattern(), "Dairy"),
         (MeatPattern(), "Meat"),
@@ -39,7 +40,7 @@ internal static partial class IngredientLineParser
     [GeneratedRegex(@"(\d+\s*/\s*\d+|\d+(?:\.\d+)?)(?:\s*(cup|cups|tbsp|tsp|teaspoon|teaspoons|tablespoon|tablespoons|oz|ounce|ounces|lb|lbs|pound|pounds|g|gram|grams|kg|ml|l|liter|liters|can|cans|clove|cloves|slice|slices|piece|pieces|package|packages|pinch|dash|head|bunch|stalk|stalks|stick|sticks))?\.?\s+(.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
     private static partial Regex QuantityLinePattern();
 
-    [GeneratedRegex(@"\b(lettuce|tomato|onion|garlic|apple|banana|carrot|celery|pepper|potato|spinach|broccoli|cucumber|lemon|lime|avocado|mushroom|zucchini|basil|cilantro|parsley|fruit|vegetable|salad|berries|thyme)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+    [GeneratedRegex(@"\b(lettuce|tomato|onion|garlic|apple|banana|carrot|celery|bell pepper|potato|spinach|broccoli|cucumber|lemon|lime|avocado|mushroom|zucchini|basil|cilantro|parsley|fruit|vegetable|salad|berries|thyme)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
     private static partial Regex ProducePattern();
 
     [GeneratedRegex(@"\b(milk|cheese|butter|cream|yogurt|egg|eggs|sour cream|cheddar|mozzarella|parmesan|whipping cream|heavy cream)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
@@ -54,7 +55,10 @@ internal static partial class IngredientLineParser
     [GeneratedRegex(@"\b(frozen|ice cream)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
     private static partial Regex FrozenPattern();
 
-    [GeneratedRegex(@"\b(flour|sugar|salt|oil|vinegar|rice|pasta|beans|broth|stock|sauce|spice|honey|syrup|nuts|oat|parmesan|tomatoes)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+    [GeneratedRegex(@"\b(salt|pepper|black pepper|chili powder|paprika|cumin|cinnamon|nutmeg|oregano|turmeric|curry powder|garlic powder|onion powder|seasoning|spice|spices|cayenne|vanilla|ginger powder|italian seasoning|red pepper flakes)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+    private static partial Regex SeasoningsPattern();
+
+    [GeneratedRegex(@"\b(flour|sugar|oil|vinegar|rice|pasta|beans|broth|stock|sauce|honey|syrup|nuts|oat|parmesan|tomatoes)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
     private static partial Regex PantryPattern();
 
     [GeneratedRegex(@"[0O]{4,}|[^a-zA-Z0-9\s,\.\-/']{5,}", RegexOptions.Compiled)]

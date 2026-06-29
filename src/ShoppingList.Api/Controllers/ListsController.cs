@@ -6,7 +6,6 @@ using ShoppingList.Api.Contracts;
 using ShoppingList.Api.Hubs;
 using ShoppingList.Api.Services;
 using ShoppingList.Application.Hubs;
-using ShoppingList.Application.Parsing;
 using ShoppingList.Domain.Entities;
 using ShoppingList.Domain.Enums;
 using ShoppingList.Infrastructure.Persistence;
@@ -19,10 +18,10 @@ namespace ShoppingList.Api.Controllers;
 [AllowAnonymous]
 public class ListsController(
     ApplicationDbContext db,
-    IIngredientParserService ingredientParser,
     IHubContext<ShoppingListHub> hubContext,
     CurrentUserService currentUser,
     ListAccessService listAccess,
+    RecipeAccessService recipeAccess,
     ShareCodeAllocationService shareCodes) : ControllerBase
 {
     [HttpGet]
@@ -321,6 +320,62 @@ public class ListsController(
         return Ok(dto);
     }
 
+    [HttpPost("{listId:guid}/items/check-all")]
+    [ProducesResponseType(typeof(CheckAllItemsResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<CheckAllItemsResponse>> CheckAllItems(
+        Guid listId,
+        [FromBody] CheckAllItemsRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var userId = currentUser.GetUserId();
+        var list = await listAccess.GetAccessibleListMetadataAsync(listId, userId, cancellationToken);
+
+        if (list is null)
+        {
+            return NotFound(new { error = "List not found." });
+        }
+
+        var editableCheck = ListAccessService.RequireEditable(list);
+        if (editableCheck is not null)
+        {
+            return editableCheck;
+        }
+
+        var category = string.IsNullOrWhiteSpace(request?.Category) ? null : request!.Category.Trim();
+        var query = db.ListItems.Where(i => i.ShoppingListId == listId && !i.IsChecked);
+
+        if (category is not null)
+        {
+            query = query.Where(i => i.Category == category);
+        }
+
+        var itemIds = await query.Select(i => i.Id).ToListAsync(cancellationToken);
+        if (itemIds.Count == 0)
+        {
+            return Ok(new CheckAllItemsResponse(0, []));
+        }
+
+        var now = DateTime.UtcNow;
+
+        await db.ListItems
+            .Where(i => itemIds.Contains(i.Id))
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(i => i.IsChecked, true)
+                    .SetProperty(i => i.UpdatedAt, now),
+                cancellationToken);
+
+        await db.ShoppingLists
+            .Where(l => l.Id == listId)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(l => l.UpdatedAt, now),
+                cancellationToken);
+
+        await ShoppingListHub.ItemsBulkToggled(hubContext, listId, itemIds, true);
+
+        return Ok(new CheckAllItemsResponse(itemIds.Count, itemIds));
+    }
+
     [HttpDelete("{listId:guid}/items/{itemId:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> DeleteItem(
@@ -328,35 +383,103 @@ public class ListsController(
         Guid itemId,
         CancellationToken cancellationToken)
     {
-        var list = await LoadEditableListAsync(listId, cancellationToken);
-        if (list.Result is not null)
+        var userId = currentUser.GetUserId();
+        var list = await listAccess.GetAccessibleListMetadataAsync(listId, userId, cancellationToken);
+
+        if (list is null)
         {
-            return list.Result;
+            return NotFound(new { error = "List not found." });
         }
 
-        var item = await db.ListItems
-            .FirstOrDefaultAsync(i => i.ShoppingListId == listId && i.Id == itemId, cancellationToken);
+        var editableCheck = ListAccessService.RequireEditable(list);
+        if (editableCheck is not null)
+        {
+            return editableCheck;
+        }
 
-        if (item is null)
+        var rowsDeleted = await db.ListItems
+            .Where(i => i.ShoppingListId == listId && i.Id == itemId)
+            .ExecuteDeleteAsync(cancellationToken);
+
+        if (rowsDeleted == 0)
         {
             return NotFound(new { error = "Item not found." });
         }
 
-        db.ListItems.Remove(item);
-        list.Value!.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync(cancellationToken);
+        var now = DateTime.UtcNow;
+        await db.ShoppingLists
+            .Where(l => l.Id == listId)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(l => l.UpdatedAt, now),
+                cancellationToken);
+
         await ShoppingListHub.ItemDeleted(hubContext, listId, itemId);
 
         return NoContent();
     }
 
-    [HttpPost("{listId:guid}/upload-image")]
-    [RequestSizeLimit(10 * 1024 * 1024)]
-    [Consumes("multipart/form-data")]
-    [ProducesResponseType(typeof(UploadImageResponse), StatusCodes.Status200OK)]
-    public async Task<ActionResult<UploadImageResponse>> UploadImage(
+    [HttpPost("{listId:guid}/items/delete-many")]
+    [ProducesResponseType(typeof(DeleteItemsResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<DeleteItemsResponse>> DeleteItems(
         Guid listId,
-        IFormFile? image,
+        [FromBody] DeleteItemsRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = currentUser.GetUserId();
+        var list = await listAccess.GetAccessibleListMetadataAsync(listId, userId, cancellationToken);
+
+        if (list is null)
+        {
+            return NotFound(new { error = "List not found." });
+        }
+
+        var editableCheck = ListAccessService.RequireEditable(list);
+        if (editableCheck is not null)
+        {
+            return editableCheck;
+        }
+
+        var requestedIds = (request.ItemIds ?? [])
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .ToList();
+
+        if (requestedIds.Count == 0)
+        {
+            return Ok(new DeleteItemsResponse(0, []));
+        }
+
+        var itemIds = await db.ListItems
+            .Where(i => i.ShoppingListId == listId && requestedIds.Contains(i.Id))
+            .Select(i => i.Id)
+            .ToListAsync(cancellationToken);
+
+        if (itemIds.Count == 0)
+        {
+            return NotFound(new { error = "No matching items found." });
+        }
+
+        await db.ListItems
+            .Where(i => i.ShoppingListId == listId && itemIds.Contains(i.Id))
+            .ExecuteDeleteAsync(cancellationToken);
+
+        var now = DateTime.UtcNow;
+        await db.ShoppingLists
+            .Where(l => l.Id == listId)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(l => l.UpdatedAt, now),
+                cancellationToken);
+
+        await ShoppingListHub.ItemsBulkDeleted(hubContext, listId, itemIds);
+
+        return Ok(new DeleteItemsResponse(itemIds.Count, itemIds));
+    }
+
+    [HttpPost("{listId:guid}/import-recipe/{recipeId:guid}")]
+    [ProducesResponseType(typeof(ImportRecipeResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ImportRecipeResponse>> ImportRecipe(
+        Guid listId,
+        Guid recipeId,
         CancellationToken cancellationToken)
     {
         var listResult = await LoadEditableListAsync(listId, cancellationToken);
@@ -365,34 +488,17 @@ public class ListsController(
             return listResult.Result;
         }
 
-        if (image is null || image.Length == 0)
+        var userId = currentUser.GetUserId();
+        var recipe = await recipeAccess.GetAccessibleRecipeAsync(recipeId, userId, cancellationToken);
+
+        if (recipe is null)
         {
-            return BadRequest(new { error = "An image file is required (form field: image)." });
+            return NotFound(new { error = "Recipe not found." });
         }
 
-        if (!AllowedContentTypes.Contains(image.ContentType))
+        if (recipe.Ingredients.Count == 0)
         {
-            return BadRequest(new { error = $"Unsupported content type: {image.ContentType}" });
-        }
-
-        IReadOnlyList<ParsedIngredientDto> parsed;
-        try
-        {
-            await using var stream = image.OpenReadStream();
-            parsed = await ingredientParser.ParseFromStreamAsync(stream, cancellationToken);
-        }
-        catch (DirectoryNotFoundException ex)
-        {
-            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = ex.Message });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return StatusCode(StatusCodes.Status500InternalServerError, new { error = ex.Message });
-        }
-
-        if (parsed.Count == 0)
-        {
-            return Ok(new UploadImageResponse(listId, [], "No ingredients could be extracted from the image."));
+            return Ok(new ImportRecipeResponse(listId, [], "Recipe has no ingredients to add."));
         }
 
         var nextSortOrder = await db.ListItems
@@ -403,7 +509,7 @@ public class ListsController(
         var now = DateTime.UtcNow;
         var entities = new List<ListItem>();
 
-        foreach (var ingredient in parsed)
+        foreach (var ingredient in recipe.Ingredients.OrderBy(i => i.Category).ThenBy(i => i.SortOrder))
         {
             nextSortOrder++;
             entities.Add(new ListItem
@@ -411,7 +517,7 @@ public class ListsController(
                 Id = Guid.NewGuid(),
                 ShoppingListId = listId,
                 Name = ingredient.Name,
-                Quantity = string.IsNullOrWhiteSpace(ingredient.Quantity) ? null : ingredient.Quantity,
+                Quantity = ingredient.Quantity,
                 Category = ingredient.Category,
                 IsChecked = false,
                 SortOrder = nextSortOrder,
@@ -426,10 +532,10 @@ public class ListsController(
         var eventDtos = entities.Select(ToEventDto).ToList();
         await ShoppingListHub.ItemsBulkAdded(hubContext, listId, eventDtos);
 
-        return Ok(new UploadImageResponse(
+        return Ok(new ImportRecipeResponse(
             listId,
             eventDtos,
-            $"Added {eventDtos.Count} ingredient(s) from image."));
+            $"Added {eventDtos.Count} ingredient(s) from {recipe.Name}."));
     }
 
     private async Task<ActionResult<ShoppingListEntity>> LoadEditableListAsync(
@@ -516,11 +622,6 @@ public class ListsController(
         && request.Name is null
         && request.Quantity is null
         && request.Category is null;
-
-    private static readonly HashSet<string> AllowedContentTypes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "image/jpeg", "image/jpg", "image/png", "image/webp", "image/bmp", "image/tiff"
-    };
 
     private static ListItemEventDto ToEventDto(ListItem item) =>
         new(item.Id, item.ShoppingListId, item.Name, item.Quantity, item.Category, item.IsChecked, item.SortOrder);

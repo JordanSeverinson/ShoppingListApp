@@ -1,11 +1,12 @@
 import { DEMO_USER_ID } from "../lib/userId";
 import type {
+  CheckAllItemsResponse,
   CreateItemPayload,
+  DeleteItemsResponse,
   ListDetail,
   ListItem,
   ListSummary,
   ListSummaryResponse,
-  UploadImageResponse,
 } from "../types/list";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "";
@@ -93,23 +94,55 @@ export function deleteItem(listId: string, itemId: string): Promise<void> {
   return request<void>(`/api/lists/${listId}/items/${itemId}`, { method: "DELETE" });
 }
 
-export async function uploadImage(
+export function deleteItems(
   listId: string,
-  file: File,
-): Promise<UploadImageResponse> {
-  const formData = new FormData();
-  formData.append("image", file);
-
-  const response = await fetch(`${API_BASE}/api/lists/${listId}/upload-image`, {
+  itemIds: string[],
+  options?: { keepalive?: boolean },
+): Promise<DeleteItemsResponse> {
+  const init: RequestInit = {
     method: "POST",
-    headers: { "X-User-Id": DEMO_USER_ID },
-    body: formData,
+    body: JSON.stringify({ itemIds }),
+  };
+
+  if (options?.keepalive) {
+    return keepaliveRequest<DeleteItemsResponse>(
+      `/api/lists/${listId}/items/delete-many`,
+      init,
+    );
+  }
+
+  return request<DeleteItemsResponse>(`/api/lists/${listId}/items/delete-many`, init);
+}
+
+async function keepaliveRequest<T>(path: string, init: RequestInit): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    keepalive: true,
+    headers: {
+      ...apiHeaders(),
+      ...init.headers,
+    },
   });
 
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(body?.error ?? `Upload failed (${response.status})`);
+    throw new Error(body?.error ?? `Request failed (${response.status})`);
   }
 
-  return (await response.json()) as UploadImageResponse;
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  return (await response.json()) as T;
 }
+
+export function checkAllItems(
+  listId: string,
+  category?: string,
+): Promise<CheckAllItemsResponse> {
+  return request<CheckAllItemsResponse>(`/api/lists/${listId}/items/check-all`, {
+    method: "POST",
+    body: JSON.stringify({ category: category ?? null }),
+  });
+}
+

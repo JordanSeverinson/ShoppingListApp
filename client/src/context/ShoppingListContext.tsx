@@ -8,6 +8,8 @@ import {
   type ReactNode,
 } from "react";
 import * as listsApi from "../api/lists";
+import * as recipesApi from "../api/recipes";
+import { enqueueDelete, flushDeletesNow } from "../lib/deleteQueue";
 import {
   createListHubConnection,
   mapHubState,
@@ -28,12 +30,13 @@ interface ShoppingListContextValue {
   renameList: (name: string) => Promise<void>;
   addItem: (payload: CreateItemPayload) => Promise<void>;
   toggleItem: (itemId: string, isChecked: boolean) => Promise<void>;
+  checkAllItems: (category?: string) => Promise<void>;
   updateItem: (
     itemId: string,
     patch: Partial<Pick<ListItem, "name" | "quantity" | "category">>,
   ) => Promise<void>;
-  removeItem: (itemId: string) => Promise<void>;
-  uploadImage: (file: File) => Promise<{ added: number; message: string }>;
+  removeItem: (itemId: string) => void;
+  importRecipe: (recipeId: string) => Promise<{ added: number; message: string }>;
 }
 
 const ShoppingListContext = createContext<ShoppingListContextValue | null>(null);
@@ -70,6 +73,7 @@ export function ShoppingListProvider({
   const [error, setError] = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>("connecting");
+  const deleteKey = `list:${listId}`;
 
   const patchItems = useCallback((mutate: (items: ListItem[]) => ListItem[]) => {
     setDetail((current) =>
@@ -112,14 +116,28 @@ export function ShoppingListProvider({
       );
     const onItemDeleted = (itemId: string) =>
       patchItems((items) => items.filter((item) => item.id !== itemId));
+    const onItemsBulkDeleted = (itemIds: string[]) => {
+      const idSet = new Set(itemIds.map(String));
+      patchItems((items) => items.filter((item) => !idSet.has(item.id)));
+    };
     const onItemsBulkAdded = (items: ListItem[]) =>
       patchItems((current) => mergeItems(current, items));
+    const onItemsBulkToggled = (itemIds: string[], isChecked: boolean) => {
+      const idSet = new Set(itemIds.map(String));
+      patchItems((items) =>
+        items.map((item) =>
+          idSet.has(item.id) ? { ...item, isChecked } : item,
+        ),
+      );
+    };
 
     connection.on("ItemAdded", onItemAdded);
     connection.on("ItemUpdated", onItemUpdated);
     connection.on("ItemToggled", onItemToggled);
     connection.on("ItemDeleted", onItemDeleted);
+    connection.on("ItemsBulkDeleted", onItemsBulkDeleted);
     connection.on("ItemsBulkAdded", onItemsBulkAdded);
+    connection.on("ItemsBulkToggled", onItemsBulkToggled);
 
     connection.onreconnecting(() => setConnectionStatus("reconnecting"));
     connection.onreconnected(async () => {
@@ -168,6 +186,26 @@ export function ShoppingListProvider({
       })();
     };
   }, [listId, patchItems]);
+
+  const flushListDeletes = useCallback(
+    (itemIds: string[], options?: { keepalive?: boolean }) =>
+      listsApi.deleteItems(listId, itemIds, options),
+    [listId],
+  );
+
+  const restoreItems = useCallback(
+    (items: ListItem[]) => {
+      patchItems((current) => sortItems([...current, ...items]));
+      setError("Could not delete items");
+    },
+    [patchItems],
+  );
+
+  useEffect(() => {
+    return () => {
+      void flushDeletesNow(deleteKey, { keepalive: true });
+    };
+  }, [deleteKey]);
 
   const renameList = useCallback(
     async (name: string) => {
@@ -221,6 +259,46 @@ export function ShoppingListProvider({
     [canEdit, detail?.items, listId, patchItems],
   );
 
+  const checkAllItems = useCallback(
+    async (category?: string) => {
+      if (!canEdit) {
+        return;
+      }
+
+      const targets =
+        detail?.items.filter(
+          (item) => !item.isChecked && (!category || item.category === category),
+        ) ?? [];
+
+      if (targets.length === 0) {
+        return;
+      }
+
+      const previous = new Map(targets.map((item) => [item.id, item.isChecked]));
+      const targetIds = new Set(targets.map((item) => item.id));
+
+      patchItems((items) =>
+        items.map((item) =>
+          targetIds.has(item.id) ? { ...item, isChecked: true } : item,
+        ),
+      );
+
+      try {
+        await listsApi.checkAllItems(listId, category);
+      } catch (err) {
+        patchItems((items) =>
+          items.map((item) =>
+            previous.has(item.id)
+              ? { ...item, isChecked: previous.get(item.id)! }
+              : item,
+          ),
+        );
+        setError(err instanceof Error ? err.message : "Could not check all items");
+      }
+    },
+    [canEdit, detail?.items, listId, patchItems],
+  );
+
   const updateItem = useCallback(
     async (
       itemId: string,
@@ -236,22 +314,30 @@ export function ShoppingListProvider({
   );
 
   const removeItem = useCallback(
-    async (itemId: string) => {
+    (itemId: string) => {
       if (!canEdit) {
         return;
       }
-      await listsApi.deleteItem(listId, itemId);
-      patchItems((items) => items.filter((item) => item.id !== itemId));
+
+      patchItems((items) => {
+        const removed = items.find((item) => item.id === itemId);
+        if (!removed) {
+          return items;
+        }
+
+        enqueueDelete(deleteKey, removed, flushListDeletes, restoreItems);
+        return items.filter((item) => item.id !== itemId);
+      });
     },
-    [canEdit, listId, patchItems],
+    [canEdit, deleteKey, flushListDeletes, patchItems, restoreItems],
   );
 
-  const uploadImage = useCallback(
-    async (file: File) => {
+  const importRecipe = useCallback(
+    async (recipeId: string) => {
       if (!canEdit) {
         throw new Error("This list is archived and cannot be edited.");
       }
-      const result = await listsApi.uploadImage(listId, file);
+      const result = await recipesApi.importRecipeToList(listId, recipeId);
       if (result.items.length > 0) {
         patchItems((items) => mergeItems(items, result.items));
       }
@@ -274,9 +360,10 @@ export function ShoppingListProvider({
       renameList,
       addItem,
       toggleItem,
+      checkAllItems,
       updateItem,
       removeItem,
-      uploadImage,
+      importRecipe,
     }),
     [
       listId,
@@ -289,9 +376,10 @@ export function ShoppingListProvider({
       renameList,
       addItem,
       toggleItem,
+      checkAllItems,
       updateItem,
       removeItem,
-      uploadImage,
+      importRecipe,
     ],
   );
 

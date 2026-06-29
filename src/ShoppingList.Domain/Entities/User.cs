@@ -10,4 +10,6 @@ public class User : AuditableEntity
 
     public ICollection<ShoppingList> OwnedLists { get; set; } = [];
     public ICollection<SharedPermission> SharedPermissions { get; set; } = [];
+    public ICollection<Recipe> OwnedRecipes { get; set; } = [];
+    public ICollection<RecipeSharedPermission> RecipeSharedPermissions { get; set; } = [];
 }

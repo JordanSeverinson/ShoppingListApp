@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { AddItemInput } from "../components/AddItemInput";
 import { ConnectionBadge } from "../components/ConnectionBadge";
 import { EditableListName } from "../components/EditableListName";
-import { ImageUploader } from "../components/ImageUploader";
+import { RecipeImporter } from "../components/RecipeImporter";
 import { ListView } from "../components/ListView";
 import { ShareCodeCopy } from "../components/ShareCodeCopy";
 import { ShoppingListProvider, useShoppingList } from "../context/ShoppingListContext";
@@ -21,7 +21,7 @@ function ListDetailContent() {
   return (
     <>
       <Link
-        to="/"
+        to="/lists"
         className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-muted hover:text-brand-700"
       >
         <ArrowLeft className="h-4 w-4" aria-hidden />
@@ -58,7 +58,7 @@ function ListDetailContent() {
       </header>
 
       <div className="space-y-8">
-        {canEdit && <ImageUploader />}
+        {canEdit && <RecipeImporter />}
         {canEdit && <AddItemInput />}
         <ListView readOnly={!canEdit} />
       </div>

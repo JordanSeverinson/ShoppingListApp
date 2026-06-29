@@ -37,8 +37,12 @@ export interface CreateItemPayload {
   category: string;
 }
 
-export interface UploadImageResponse {
-  listId: string;
-  items: ListItem[];
-  message: string;
+export interface CheckAllItemsResponse {
+  updatedCount: number;
+  itemIds: string[];
+}
+
+export interface DeleteItemsResponse {
+  deletedCount: number;
+  itemIds: string[];
 }

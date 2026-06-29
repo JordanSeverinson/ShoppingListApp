@@ -1,4 +1,4 @@
-import { Check, Pencil, Trash2, X } from "lucide-react";
+import { Check, CheckCheck, Pencil, Trash2, X } from "lucide-react";
 import { memo, useMemo, useState } from "react";
 import { useShoppingList } from "../context/ShoppingListContext";
 import { CATEGORIES } from "../lib/categories";
@@ -52,7 +52,7 @@ const ItemRow = memo(function ItemRow({
     itemId: string,
     patch: Partial<Pick<ListItem, "name" | "quantity" | "category">>,
   ) => Promise<void>;
-  onRemove: (itemId: string) => Promise<void>;
+  onRemove: (itemId: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(item.name);
@@ -75,12 +75,7 @@ const ItemRow = memo(function ItemRow({
   }
 
   async function handleDelete() {
-    setBusy(true);
-    try {
-      await onRemove(item.id);
-    } finally {
-      setBusy(false);
-    }
+    onRemove(item.id);
   }
 
   if (editing && !readOnly) {
@@ -170,7 +165,6 @@ const ItemRow = memo(function ItemRow({
           <button
             type="button"
             onClick={() => void handleDelete()}
-            disabled={busy}
             className="rounded-lg p-2 text-muted hover:bg-red-50 hover:text-red-600"
             aria-label={`Delete ${item.name}`}
           >
@@ -183,13 +177,19 @@ const ItemRow = memo(function ItemRow({
 }, (prev, next) => prev.readOnly === next.readOnly && itemsEqual(prev.item, next.item));
 
 export function ListView({ readOnly = false }: { readOnly?: boolean }) {
-  const { items, loading, error, toggleItem, updateItem, removeItem } = useShoppingList();
+  const { items, loading, error, toggleItem, checkAllItems, updateItem, removeItem } =
+    useShoppingList();
 
   const grouped = useMemo(() => groupByCategory(items), [items]);
   const checkedCount = useMemo(
     () => items.reduce((count, item) => count + (item.isChecked ? 1 : 0), 0),
     [items],
   );
+  const uncheckedCount = items.length - checkedCount;
+
+  async function handleCheckAll(category?: string) {
+    await checkAllItems(category);
+  }
 
   if (loading) {
     return (
@@ -218,18 +218,45 @@ export function ListView({ readOnly = false }: { readOnly?: boolean }) {
 
   return (
     <div className="space-y-6">
-      <p className="text-sm text-muted">
-        {checkedCount} of {items.length} checked off
-      </p>
-      {[...grouped.entries()].map(([category, categoryItems]) => (
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted">
+          {checkedCount} of {items.length} checked off
+        </p>
+        {!readOnly && uncheckedCount > 0 && (
+          <button
+            type="button"
+            onClick={() => void handleCheckAll()}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-1.5 text-sm font-medium text-brand-700 transition hover:bg-brand-100"
+          >
+            <CheckCheck className="h-4 w-4" aria-hidden />
+            Check all items
+          </button>
+        )}
+      </div>
+      {[...grouped.entries()].map(([category, categoryItems]) => {
+        const categoryUnchecked = categoryItems.filter((item) => !item.isChecked).length;
+
+        return (
         <section key={category}>
-          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted">
-            <span className="h-2 w-2 rounded-full bg-brand-500" />
-            {category}
-            <span className="font-normal normal-case text-muted/80">
-              ({categoryItems.length})
-            </span>
-          </h2>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted">
+              <span className="h-2 w-2 rounded-full bg-brand-500" />
+              {category}
+              <span className="font-normal normal-case text-muted/80">
+                ({categoryItems.length})
+              </span>
+            </h2>
+            {!readOnly && categoryUnchecked > 0 && (
+              <button
+                type="button"
+                onClick={() => void handleCheckAll(category)}
+                className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-brand-700 transition hover:bg-brand-50"
+              >
+                <CheckCheck className="h-3.5 w-3.5" aria-hidden />
+                Check all
+              </button>
+            )}
+          </div>
           <ul className="space-y-2">
             {categoryItems.map((item) => (
               <ItemRow
@@ -243,7 +270,8 @@ export function ListView({ readOnly = false }: { readOnly?: boolean }) {
             ))}
           </ul>
         </section>
-      ))}
+        );
+      })}
     </div>
   );
 }

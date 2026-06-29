@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using ShoppingList.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using ShoppingList.Infrastructure.Persistence;
 namespace ShoppingList.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260627071751_AddRecipes")]
+    partial class AddRecipes
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -62,116 +65,6 @@ namespace ShoppingList.Infrastructure.Persistence.Migrations
                     b.HasIndex("ShoppingListId", "SortOrder");
 
                     b.ToTable("list_items", (string)null);
-                });
-
-            modelBuilder.Entity("ShoppingList.Domain.Entities.Recipe", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<Guid>("OwnerId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("ShareCode")
-                        .IsRequired()
-                        .HasMaxLength(11)
-                        .HasColumnType("character varying(11)");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("OwnerId");
-
-                    b.HasIndex("ShareCode")
-                        .IsUnique();
-
-                    b.ToTable("recipes", (string)null);
-                });
-
-            modelBuilder.Entity("ShoppingList.Domain.Entities.RecipeIngredient", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Category")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("character varying(300)");
-
-                    b.Property<string>("Quantity")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<Guid>("RecipeId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RecipeId", "SortOrder");
-
-                    b.ToTable("recipe_ingredients", (string)null);
-                });
-
-            modelBuilder.Entity("ShoppingList.Domain.Entities.RecipeSharedPermission", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("GrantedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("PermissionLevel")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<Guid>("RecipeId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RecipeId");
-
-                    b.HasIndex("UserId", "RecipeId")
-                        .IsUnique();
-
-                    b.ToTable("recipe_shared_permissions", (string)null);
                 });
 
             modelBuilder.Entity("ShoppingList.Domain.Entities.SharedPermission", b =>
@@ -300,47 +193,6 @@ namespace ShoppingList.Infrastructure.Persistence.Migrations
                     b.Navigation("ShoppingList");
                 });
 
-            modelBuilder.Entity("ShoppingList.Domain.Entities.Recipe", b =>
-                {
-                    b.HasOne("ShoppingList.Domain.Entities.User", "Owner")
-                        .WithMany("OwnedRecipes")
-                        .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Owner");
-                });
-
-            modelBuilder.Entity("ShoppingList.Domain.Entities.RecipeIngredient", b =>
-                {
-                    b.HasOne("ShoppingList.Domain.Entities.Recipe", "Recipe")
-                        .WithMany("Ingredients")
-                        .HasForeignKey("RecipeId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Recipe");
-                });
-
-            modelBuilder.Entity("ShoppingList.Domain.Entities.RecipeSharedPermission", b =>
-                {
-                    b.HasOne("ShoppingList.Domain.Entities.Recipe", "Recipe")
-                        .WithMany("SharedPermissions")
-                        .HasForeignKey("RecipeId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("ShoppingList.Domain.Entities.User", "User")
-                        .WithMany("RecipeSharedPermissions")
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Recipe");
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("ShoppingList.Domain.Entities.SharedPermission", b =>
                 {
                     b.HasOne("ShoppingList.Domain.Entities.ShoppingList", "ShoppingList")
@@ -371,13 +223,6 @@ namespace ShoppingList.Infrastructure.Persistence.Migrations
                     b.Navigation("Owner");
                 });
 
-            modelBuilder.Entity("ShoppingList.Domain.Entities.Recipe", b =>
-                {
-                    b.Navigation("Ingredients");
-
-                    b.Navigation("SharedPermissions");
-                });
-
             modelBuilder.Entity("ShoppingList.Domain.Entities.ShoppingList", b =>
                 {
                     b.Navigation("Items");
@@ -388,10 +233,6 @@ namespace ShoppingList.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("ShoppingList.Domain.Entities.User", b =>
                 {
                     b.Navigation("OwnedLists");
-
-                    b.Navigation("OwnedRecipes");
-
-                    b.Navigation("RecipeSharedPermissions");
 
                     b.Navigation("SharedPermissions");
                 });

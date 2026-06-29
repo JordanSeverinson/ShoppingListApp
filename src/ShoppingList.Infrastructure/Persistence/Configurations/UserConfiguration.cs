@@ -35,5 +35,15 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
             .WithOne(p => p.User)
             .HasForeignKey(p => p.UserId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasMany(u => u.OwnedRecipes)
+            .WithOne(r => r.Owner)
+            .HasForeignKey(r => r.OwnerId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasMany(u => u.RecipeSharedPermissions)
+            .WithOne(p => p.User)
+            .HasForeignKey(p => p.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

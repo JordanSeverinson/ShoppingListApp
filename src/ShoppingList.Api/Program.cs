@@ -57,6 +57,7 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<CurrentUserService>();
 builder.Services.AddScoped<ListAccessService>();
+builder.Services.AddScoped<RecipeAccessService>();
 builder.Services.AddScoped<ShareCodeAllocationService>();
 
 builder.Services.AddSignalR();

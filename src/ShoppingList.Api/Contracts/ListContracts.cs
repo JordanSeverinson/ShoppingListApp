@@ -38,7 +38,10 @@ public record UpdateItemRequest(
     string? Category,
     bool? IsChecked);
 
-public record UploadImageResponse(
-    Guid ListId,
-    IReadOnlyList<ListItemEventDto> Items,
-    string Message);
+public record CheckAllItemsRequest(string? Category);
+
+public record CheckAllItemsResponse(int UpdatedCount, IReadOnlyList<Guid> ItemIds);
+
+public record DeleteItemsRequest(IReadOnlyList<Guid> ItemIds);
+
+public record DeleteItemsResponse(int DeletedCount, IReadOnlyList<Guid> ItemIds);

@@ -1,6 +1,6 @@
 import { ImageUp, Loader2, Upload } from "lucide-react";
 import { useCallback, useRef, useState, type DragEvent } from "react";
-import { useShoppingList } from "../context/ShoppingListContext";
+import * as recipesApi from "../api/recipes";
 
 const ACCEPTED_TYPES = new Set([
   "image/jpeg",
@@ -15,8 +15,13 @@ function isImageFile(file: File): boolean {
   return ACCEPTED_TYPES.has(file.type) || file.type.startsWith("image/");
 }
 
-export function ImageUploader() {
-  const { uploadImage } = useShoppingList();
+export function RecipeImageUploader({
+  recipeId,
+  onIngredientsAdded,
+}: {
+  recipeId: string;
+  onIngredientsAdded: () => void;
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -36,9 +41,12 @@ export function ImageUploader() {
       setMessage(null);
 
       try {
-        const result = await uploadImage(file);
+        const result = await recipesApi.uploadRecipeImage(recipeId, file);
+        if (result.ingredients.length > 0) {
+          onIngredientsAdded();
+        }
         setMessage(
-          result.added > 0
+          result.ingredients.length > 0
             ? result.message
             : "No ingredients detected — try a clearer screenshot.",
         );
@@ -48,7 +56,7 @@ export function ImageUploader() {
         setUploading(false);
       }
     },
-    [uploadImage],
+    [onIngredientsAdded, recipeId],
   );
 
   function handleDrop(event: DragEvent) {
@@ -67,8 +75,7 @@ export function ImageUploader() {
         <h2 className="font-semibold text-ink">Import from screenshot</h2>
       </div>
       <p className="mb-4 text-sm text-muted">
-        Drop a recipe ingredient screenshot. OCR will add items to this list for everyone
-        connected in real time.
+        Drop a recipe ingredient screenshot. OCR will add ingredients to this saved recipe.
       </p>
 
       <div
