@@ -69,7 +69,7 @@ cd ShoppingListApp
 copy src\ShoppingList.Api\appsettings.Development.local.json.example src\ShoppingList.Api\appsettings.Development.local.json
 ```
 
-Edit `appsettings.Development.local.json` with your Postgres password and a JWT signing key (at least 32 characters). You can also set `ConnectionStrings:DefaultConnection` and `Jwt:Key` directly in `appsettings.json`.
+Edit `appsettings.Development.local.json` with your Postgres password and a JWT signing key (at least 32 characters). Do not put secrets in `appsettings.json` — it is committed to git.
 
 **Client** (optional):
 

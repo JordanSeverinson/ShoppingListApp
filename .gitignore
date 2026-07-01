@@ -12,6 +12,7 @@ obj/
 project.lock.json
 project.fragment.lock.json
 artifacts/
+.api-test-build/
 
 ## Secrets & local config
 appsettings.*.local.json
