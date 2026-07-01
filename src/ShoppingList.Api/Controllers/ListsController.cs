@@ -23,6 +23,7 @@ public class ListsController(
     CurrentUserService currentUser,
     ListAccessService listAccess,
     ListSharingService listSharing,
+    ListHubNotifier listHubNotifier,
     RecipeAccessService recipeAccess,
     ILogger<ListsController> logger) : ControllerBase
 {
@@ -169,7 +170,7 @@ public class ListsController(
 
         if (list is null)
         {
-            return NotFound(new { error = $"Shopping list {listId} was not found." });
+            return NotFound(new { error = ApiErrors.ListNotFound });
         }
 
         var items = list.Items
@@ -265,6 +266,8 @@ public class ListsController(
 
         db.ShoppingLists.Remove(list);
         await db.SaveChangesAsync(cancellationToken);
+
+        await listHubNotifier.EvictAllFromListAsync(listId, cancellationToken);
 
         return NoContent();
     }

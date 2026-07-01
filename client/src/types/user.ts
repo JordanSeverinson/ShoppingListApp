@@ -17,6 +17,10 @@ export interface UpdateUserProfilePayload {
   gender?: string | null;
 }
 
+export interface ChangePasswordResponse {
+  message: string;
+}
+
 export interface LoginResponse {
   user: UserProfile;
 }

@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using Microsoft.IdentityModel.Tokens;
+using ShoppingList.Api.Security;
 using ShoppingList.Domain.Entities;
 
 namespace ShoppingList.Api.Services;
@@ -14,13 +15,16 @@ public class JwtTokenService(IConfiguration configuration)
         var key = jwtSection["Key"] ?? throw new InvalidOperationException("Jwt:Key is not configured.");
         var issuer = jwtSection["Issuer"];
         var audience = jwtSection["Audience"];
-        var expiryMinutes = int.TryParse(jwtSection["ExpiryMinutes"], out var minutes) ? minutes : 1440;
+        var expiryMinutes = int.TryParse(jwtSection["ExpiryMinutes"], out var minutes)
+            ? minutes
+            : AuthConstants.DefaultExpiryMinutes;
 
         var claims = new List<Claim>
         {
             new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
             new(JwtRegisteredClaimNames.Email, user.Email),
             new(ClaimTypes.Name, user.PreferredName ?? user.FirstName),
+            new(AuthConstants.SecurityStampClaimType, user.SecurityStamp.ToString()),
         };
 
         var credentials = new SigningCredentials(

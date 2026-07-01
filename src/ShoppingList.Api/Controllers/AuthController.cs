@@ -112,6 +112,7 @@ public class AuthController(
             PhoneNumber = phone,
             FriendCode = await friendCodes.AllocateUniqueFriendCodeAsync(cancellationToken),
             EmailVerified = false,
+            SecurityStamp = Guid.NewGuid(),
             CreatedAt = DateTime.UtcNow,
         };
 
@@ -131,15 +132,6 @@ public class AuthController(
         [FromBody] VerifyEmailRequest request,
         CancellationToken cancellationToken) =>
         VerifyEmailCore(request.Token, cancellationToken);
-
-    [HttpGet("verify-email")]
-    [AllowAnonymous]
-    [EnableRateLimiting("auth")]
-    [ProducesResponseType(typeof(VerifyEmailResponse), StatusCodes.Status200OK)]
-    public Task<ActionResult<VerifyEmailResponse>> VerifyEmail(
-        [FromQuery] string token,
-        CancellationToken cancellationToken) =>
-        VerifyEmailCore(token, cancellationToken);
 
     [HttpPost("login")]
     [AllowAnonymous]
@@ -164,13 +156,14 @@ public class AuthController(
 
         if (!canSignIn)
         {
-            logger.LogWarning("Failed login attempt for {Email}", email);
+            SecurityAuditLogger.LogLoginFailure(logger, email);
             return Unauthorized(new { error = "Invalid email or password." });
         }
 
         var profile = UsersController.ToProfile(user!);
         var token = jwtTokens.CreateToken(user!);
         authCookies.SetAuthCookie(Response, token);
+        SecurityAuditLogger.LogLoginSuccess(logger, user!.Id);
         return Ok(new LoginResponse(profile));
     }
 
@@ -179,30 +172,20 @@ public class AuthController(
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public IActionResult Logout()
     {
-        if (Request.Cookies.TryGetValue(AuthConstants.CookieName, out var token))
+        var userId = User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value;
+        if (Guid.TryParse(userId, out var parsedUserId))
+        {
+            SecurityAuditLogger.LogLogout(logger, parsedUserId);
+        }
+
+        var token = ExtractAuthToken();
+        if (!string.IsNullOrWhiteSpace(token))
         {
             jwtDenylist.Revoke(token);
         }
 
         authCookies.ClearAuthCookie(Response);
         return NoContent();
-    }
-
-    private async Task<ActionResult<VerifyEmailResponse>> VerifyEmailCore(
-        string? token,
-        CancellationToken cancellationToken)
-    {
-        var verified = await emailVerification.VerifyAsync(token ?? string.Empty, cancellationToken);
-        if (!verified)
-        {
-            return BadRequest(new VerifyEmailResponse(
-                false,
-                "This verification link is invalid or has expired."));
-        }
-
-        return Ok(new VerifyEmailResponse(
-            true,
-            "Your email has been verified. You can now sign in."));
     }
 
     [HttpPost("forgot-password")]
@@ -252,5 +235,39 @@ public class AuthController(
         return Ok(new ResetPasswordResponse(
             true,
             "Your password has been reset. You can now sign in."));
+    }
+
+    private async Task<ActionResult<VerifyEmailResponse>> VerifyEmailCore(
+        string? token,
+        CancellationToken cancellationToken)
+    {
+        var verified = await emailVerification.VerifyAsync(token ?? string.Empty, cancellationToken);
+        if (!verified)
+        {
+            return BadRequest(new VerifyEmailResponse(
+                false,
+                "This verification link is invalid or has expired."));
+        }
+
+        return Ok(new VerifyEmailResponse(
+            true,
+            "Your email has been verified. You can now sign in."));
+    }
+
+    private string? ExtractAuthToken()
+    {
+        if (Request.Cookies.TryGetValue(AuthConstants.CookieName, out var cookieToken)
+            && !string.IsNullOrWhiteSpace(cookieToken))
+        {
+            return cookieToken;
+        }
+
+        var authHeader = Request.Headers.Authorization.ToString();
+        if (authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        {
+            return authHeader["Bearer ".Length..].Trim();
+        }
+
+        return null;
     }
 }

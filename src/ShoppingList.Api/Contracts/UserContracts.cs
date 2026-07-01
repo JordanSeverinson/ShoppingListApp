@@ -17,6 +17,10 @@ public record UpdateUserProfileRequest(
     string? PreferredName,
     string? Gender);
 
+public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
+
+public record ChangePasswordResponse(string Message);
+
 public record LoginRequest(string Email, string Password);
 
 public record RegisterRequest(

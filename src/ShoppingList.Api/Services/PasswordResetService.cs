@@ -9,6 +9,7 @@ public class PasswordResetService(
     ApplicationDbContext db,
     IEmailSender emailSender,
     PasswordService passwords,
+    UserSecurityStampService securityStamps,
     IConfiguration configuration,
     ILogger<PasswordResetService> logger)
 {
@@ -78,8 +79,11 @@ public class PasswordResetService(
         user.PasswordHash = passwords.Hash(newPassword);
         user.PasswordResetToken = null;
         user.PasswordResetTokenExpiresAt = null;
+        securityStamps.RotateStamp(user);
         user.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
+
+        SecurityAuditLogger.LogPasswordReset(logger, user.Id);
         return true;
     }
 

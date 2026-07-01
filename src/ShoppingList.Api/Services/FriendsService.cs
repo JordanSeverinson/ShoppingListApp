@@ -9,6 +9,9 @@ namespace ShoppingList.Api.Services;
 
 public class FriendsService(ApplicationDbContext db)
 {
+    public const string FriendRequestMessage =
+        "If a matching account exists, your friend request has been sent.";
+
     public async Task<FriendsResponse> GetFriendsAsync(Guid userId, CancellationToken cancellationToken)
     {
         var friendships = await db.Friendships
@@ -48,11 +51,7 @@ public class FriendsService(ApplicationDbContext db)
         var target = await FindUserAsync(request, cancellationToken);
         if (target is null)
         {
-            return new SendFriendRequestResponse(
-                Guid.Empty,
-                FriendshipStatus.Pending,
-                "If a matching account exists, your friend request has been sent.",
-                null);
+            return GenericFriendRequestResponse();
         }
 
         if (target.Id == userId)
@@ -63,27 +62,17 @@ public class FriendsService(ApplicationDbContext db)
         var existing = await FindExistingFriendshipAsync(userId, target.Id, cancellationToken);
         if (existing is not null)
         {
-            return existing.Status switch
+            switch (existing.Status)
             {
-                FriendshipStatus.Accepted => new SendFriendRequestResponse(
-                    existing.Id,
-                    existing.Status,
-                    "You are already connected with this person.",
-                    null),
-                FriendshipStatus.Pending when existing.RequesterId == userId =>
-                    new SendFriendRequestResponse(
-                        existing.Id,
-                        existing.Status,
-                        "A friend request is already pending.",
-                        null),
-                FriendshipStatus.Pending when existing.AddresseeId == userId =>
-                    await AcceptExistingRequestAsync(existing, target, cancellationToken),
-                _ => new SendFriendRequestResponse(
-                    existing.Id,
-                    existing.Status,
-                    "A previous friend request could not be sent again.",
-                    null)
-            };
+                case FriendshipStatus.Accepted:
+                case FriendshipStatus.Pending when existing.RequesterId == userId:
+                    return GenericFriendRequestResponse();
+                case FriendshipStatus.Pending when existing.AddresseeId == userId:
+                    await AcceptExistingRequestAsync(existing, cancellationToken);
+                    return GenericFriendRequestResponse();
+                default:
+                    return GenericFriendRequestResponse();
+            }
         }
 
         var friendship = new Friendship
@@ -98,11 +87,7 @@ public class FriendsService(ApplicationDbContext db)
         db.Friendships.Add(friendship);
         await db.SaveChangesAsync(cancellationToken);
 
-        return new SendFriendRequestResponse(
-            friendship.Id,
-            friendship.Status,
-            "Friend request sent.",
-            null);
+        return GenericFriendRequestResponse();
     }
 
     public async Task<FriendSummaryDto> AcceptRequestAsync(
@@ -170,20 +155,16 @@ public class FriendsService(ApplicationDbContext db)
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    private async Task<SendFriendRequestResponse> AcceptExistingRequestAsync(
+    private static SendFriendRequestResponse GenericFriendRequestResponse() =>
+        new(Guid.Empty, FriendshipStatus.Pending, FriendRequestMessage, null);
+
+    private async Task AcceptExistingRequestAsync(
         Friendship existing,
-        User target,
         CancellationToken cancellationToken)
     {
         existing.Status = FriendshipStatus.Accepted;
         existing.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
-
-        return new SendFriendRequestResponse(
-            existing.Id,
-            existing.Status,
-            "You are now connected.",
-            null);
     }
 
     private async Task<Friendship?> FindExistingFriendshipAsync(

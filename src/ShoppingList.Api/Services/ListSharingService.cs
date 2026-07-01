@@ -6,7 +6,7 @@ using ShoppingList.Infrastructure.Persistence;
 
 namespace ShoppingList.Api.Services;
 
-public class ListSharingService(ApplicationDbContext db)
+public class ListSharingService(ApplicationDbContext db, ListHubNotifier listHubNotifier)
 {
     public async Task<ShareListResponse> ShareWithFriendsAsync(
         Guid listId,
@@ -190,6 +190,8 @@ public class ListSharingService(ApplicationDbContext db)
         permission.Status = ListShareStatus.Declined;
         permission.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
+
+        await listHubNotifier.EvictUserFromListAsync(userId, permission.ShoppingListId, cancellationToken);
     }
 
     public async Task LeaveListAsync(
@@ -223,6 +225,8 @@ public class ListSharingService(ApplicationDbContext db)
 
         db.SharedPermissions.Remove(permission);
         await db.SaveChangesAsync(cancellationToken);
+
+        await listHubNotifier.EvictUserFromListAsync(userId, listId, cancellationToken);
     }
 
     private async Task<HashSet<Guid>> GetAcceptedFriendIdsAsync(

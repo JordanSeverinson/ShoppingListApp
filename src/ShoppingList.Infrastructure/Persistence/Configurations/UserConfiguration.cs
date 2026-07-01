@@ -71,6 +71,9 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
             .IsUnique()
             .HasFilter("\"PasswordResetToken\" IS NOT NULL");
 
+        builder.Property(u => u.SecurityStamp)
+            .IsRequired();
+
         builder.HasMany(u => u.OwnedLists)
             .WithOne(l => l.Owner)
             .HasForeignKey(l => l.OwnerId)

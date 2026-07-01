@@ -1,9 +1,9 @@
-import { ArrowLeft, Save, UserCircle } from "lucide-react";
+import { ArrowLeft, KeyRound, Save, UserCircle } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, Navigate } from "react-router-dom";
 import * as usersApi from "../api/users";
 import { useAuth } from "../context/AuthContext";
-import { validatePreferredName } from "../lib/registrationValidation";
+import { validatePassword, validatePreferredName } from "../lib/registrationValidation";
 import { ShareCodeCopy } from "../components/ShareCodeCopy";
 import { APP_NAME } from "../lib/appName";
 import { GENDER_OPTIONS } from "../types/user";
@@ -17,6 +17,12 @@ export function ProfilePage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -65,6 +71,44 @@ export function ProfilePage() {
       setError(err instanceof Error ? err.message : "Could not save profile");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handlePasswordSubmit(event: FormEvent) {
+    event.preventDefault();
+    setPasswordBusy(true);
+    setPasswordError(null);
+    setPasswordMessage(null);
+
+    if (!currentPassword) {
+      setPasswordError("Current password is required.");
+      setPasswordBusy(false);
+      return;
+    }
+
+    const newPasswordError = validatePassword(newPassword);
+    if (newPasswordError) {
+      setPasswordError(newPasswordError);
+      setPasswordBusy(false);
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError("Passwords do not match.");
+      setPasswordBusy(false);
+      return;
+    }
+
+    try {
+      const response = await usersApi.changePassword(currentPassword, newPassword);
+      setPasswordMessage(response.message);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err) {
+      setPasswordError(err instanceof Error ? err.message : "Could not change password");
+    } finally {
+      setPasswordBusy(false);
     }
   }
 
@@ -166,6 +210,75 @@ export function ProfilePage() {
         >
           <Save className="h-4 w-4" aria-hidden />
           {busy ? "Saving…" : "Save profile"}
+        </button>
+      </form>
+
+      <form
+        onSubmit={(event) => void handlePasswordSubmit(event)}
+        className="mt-6 space-y-5 rounded-2xl border border-border bg-white p-6 shadow-sm"
+      >
+        <div>
+          <h2 className="text-lg font-semibold text-ink">Change password</h2>
+          <p className="mt-1 text-sm text-muted">Use a strong password with at least 12 characters.</p>
+        </div>
+
+        <label className="block">
+          <span className="mb-2 block text-sm font-medium text-ink">Current password</span>
+          <input
+            type="password"
+            value={currentPassword}
+            onChange={(event) => setCurrentPassword(event.target.value)}
+            autoComplete="current-password"
+            required
+            className="w-full rounded-xl border border-border px-4 py-2.5 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
+          />
+        </label>
+
+        <label className="block">
+          <span className="mb-2 block text-sm font-medium text-ink">New password</span>
+          <input
+            type="password"
+            value={newPassword}
+            onChange={(event) => setNewPassword(event.target.value)}
+            autoComplete="new-password"
+            required
+            minLength={12}
+            className="w-full rounded-xl border border-border px-4 py-2.5 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
+          />
+        </label>
+
+        <label className="block">
+          <span className="mb-2 block text-sm font-medium text-ink">Confirm new password</span>
+          <input
+            type="password"
+            value={confirmPassword}
+            onChange={(event) => setConfirmPassword(event.target.value)}
+            autoComplete="new-password"
+            required
+            minLength={12}
+            className="w-full rounded-xl border border-border px-4 py-2.5 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
+          />
+        </label>
+
+        {passwordError && (
+          <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {passwordError}
+          </p>
+        )}
+
+        {passwordMessage && (
+          <p className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-800">
+            {passwordMessage}
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={passwordBusy}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-2.5 font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+        >
+          <KeyRound className="h-4 w-4" aria-hidden />
+          {passwordBusy ? "Updating…" : "Update password"}
         </button>
       </form>
     </div>

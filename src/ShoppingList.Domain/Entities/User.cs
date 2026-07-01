@@ -18,6 +18,7 @@ public class User : AuditableEntity
     public DateTime? EmailVerificationTokenExpiresAt { get; set; }
     public string? PasswordResetToken { get; set; }
     public DateTime? PasswordResetTokenExpiresAt { get; set; }
+    public Guid SecurityStamp { get; set; } = Guid.NewGuid();
 
     public ICollection<ShoppingList> OwnedLists { get; set; } = [];
     public ICollection<SharedPermission> SharedPermissions { get; set; } = [];

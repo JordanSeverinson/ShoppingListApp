@@ -1,5 +1,6 @@
 import { apiRequest } from "../lib/apiClient";
 import type {
+  ChangePasswordResponse,
   ForgotPasswordResponse,
   LoginResponse,
   RegisterPayload,
@@ -65,5 +66,15 @@ export function updateCurrentUser(payload: UpdateUserProfilePayload): Promise<Us
   return apiRequest<UserProfile>("/api/users/me", {
     method: "PATCH",
     body: JSON.stringify(payload),
+  });
+}
+
+export function changePassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<ChangePasswordResponse> {
+  return apiRequest<ChangePasswordResponse>("/api/users/me/change-password", {
+    method: "POST",
+    body: JSON.stringify({ currentPassword, newPassword }),
   });
 }

@@ -19,11 +19,11 @@ public class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger) : IE
             return true;
         }
 
-        if (exception is HubException hubException)
+        if (exception is HubException)
         {
             httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
             await httpContext.Response.WriteAsJsonAsync(
-                new { error = hubException.Message },
+                new { error = ApiErrors.RequestFailed },
                 cancellationToken);
             return true;
         }

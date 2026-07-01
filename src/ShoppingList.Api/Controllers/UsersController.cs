@@ -16,7 +16,12 @@ public class UsersController(
     ApplicationDbContext db,
     CurrentUserService currentUser,
     FriendCodeAllocationService friendCodes,
-    EmailVerificationService emailVerification) : ControllerBase
+    EmailVerificationService emailVerification,
+    PasswordService passwords,
+    UserSecurityStampService securityStamps,
+    JwtTokenService jwtTokens,
+    AuthCookieService authCookies,
+    ILogger<UsersController> logger) : ControllerBase
 {
     private static readonly HashSet<string> AllowedGenders =
         new(StringComparer.OrdinalIgnoreCase) { "Male", "Female", "Non-binary" };
@@ -168,6 +173,55 @@ public class UsersController(
 
         await EnsureProfileDefaultsAsync(user, cancellationToken);
         return Ok(ToProfile(user));
+    }
+
+    [HttpPost("me/change-password")]
+    [ProducesResponseType(typeof(ChangePasswordResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ChangePasswordResponse>> ChangePassword(
+        [FromBody] ChangePasswordRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = currentUser.TryGetUserId();
+        if (userId is null)
+        {
+            return Unauthorized(new { error = "Sign in to change your password." });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.CurrentPassword)
+            || string.IsNullOrWhiteSpace(request.NewPassword))
+        {
+            return BadRequest(new { error = "Current and new password are required." });
+        }
+
+        var passwordError = RegistrationValidator.ValidatePassword(request.NewPassword);
+        if (passwordError is not null)
+        {
+            return BadRequest(new { error = passwordError });
+        }
+
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        if (user is null)
+        {
+            return NotFound(new { error = "User not found." });
+        }
+
+        if (!passwords.Verify(user.PasswordHash, request.CurrentPassword))
+        {
+            return BadRequest(new { error = "Current password is incorrect." });
+        }
+
+        user.PasswordHash = passwords.Hash(request.NewPassword);
+        user.PasswordResetToken = null;
+        user.PasswordResetTokenExpiresAt = null;
+        securityStamps.RotateStamp(user);
+        user.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+
+        var token = jwtTokens.CreateToken(user);
+        authCookies.SetAuthCookie(Response, token);
+        SecurityAuditLogger.LogPasswordChanged(logger, user.Id);
+
+        return Ok(new ChangePasswordResponse("Your password has been updated."));
     }
 
     private async Task EnsureProfileDefaultsAsync(Domain.Entities.User user, CancellationToken cancellationToken)

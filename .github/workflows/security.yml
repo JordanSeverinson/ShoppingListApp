@@ -1,0 +1,39 @@
+name: Security
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Dependency audit
+        shell: pwsh
+        run: ./scripts/audit-deps.ps1 -FailOnFindings
+
+      - name: Build API
+        run: dotnet build src/ShoppingList.Api/ShoppingList.Api.csproj --configuration Release
+
+      - name: Test
+        run: dotnet test --configuration Release
+
+      - name: Build client
+        working-directory: client
+        run: npm ci && npm run build

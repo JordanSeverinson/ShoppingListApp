@@ -1,8 +1,10 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Text;
 using System.Text.Json;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -91,7 +93,7 @@ builder.Services.AddRateLimiter(options =>
 
     options.AddPolicy("auth", httpContext =>
         RateLimitPartition.GetFixedWindowLimiter(
-            httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            ClientIpResolver.GetClientIp(httpContext),
             _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = 10,
@@ -101,7 +103,7 @@ builder.Services.AddRateLimiter(options =>
 
     options.AddPolicy("friend-lookup", httpContext =>
         RateLimitPartition.GetFixedWindowLimiter(
-            httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            ClientIpResolver.GetClientIp(httpContext),
             _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = 20,
@@ -111,7 +113,7 @@ builder.Services.AddRateLimiter(options =>
 
     options.AddPolicy("ocr", httpContext =>
         RateLimitPartition.GetFixedWindowLimiter(
-            httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            ClientIpResolver.GetClientIp(httpContext),
             _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = 5,
@@ -134,6 +136,9 @@ builder.Services.AddScoped<FriendCodeAllocationService>();
 builder.Services.AddScoped<FriendsService>();
 builder.Services.AddScoped<EmailVerificationService>();
 builder.Services.AddScoped<PasswordResetService>();
+builder.Services.AddScoped<UserSecurityStampService>();
+builder.Services.AddSingleton<HubConnectionTracker>();
+builder.Services.AddScoped<ListHubNotifier>();
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<JwtDenylistService>();
 
@@ -150,6 +155,12 @@ builder.Services.AddSignalR();
 
 var jwtSection = builder.Configuration.GetSection("Jwt");
 var jwtKey = jwtSection["Key"] ?? throw new InvalidOperationException("Jwt:Key is not configured.");
+if (Encoding.UTF8.GetByteCount(jwtKey) < AuthConstants.MinJwtKeyBytes)
+{
+    throw new InvalidOperationException(
+        $"Jwt:Key must be at least {AuthConstants.MinJwtKeyBytes} bytes when UTF-8 encoded.");
+}
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -182,7 +193,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
                 return Task.CompletedTask;
             },
-            OnTokenValidated = context =>
+            OnTokenValidated = async context =>
             {
                 var denylist = context.HttpContext.RequestServices.GetRequiredService<JwtDenylistService>();
                 var rawToken = context.HttpContext.Request.Cookies[AuthConstants.CookieName];
@@ -198,9 +209,27 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 if (!string.IsNullOrWhiteSpace(rawToken) && denylist.IsRevoked(rawToken))
                 {
                     context.Fail("Token has been revoked.");
+                    return;
                 }
 
-                return Task.CompletedTask;
+                var userIdValue = context.Principal?.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
+                var stampValue = context.Principal?.FindFirst(AuthConstants.SecurityStampClaimType)?.Value;
+                if (!Guid.TryParse(userIdValue, out var userId) || !Guid.TryParse(stampValue, out var tokenStamp))
+                {
+                    context.Fail("Invalid token.");
+                    return;
+                }
+
+                var stampService = context.HttpContext.RequestServices
+                    .GetRequiredService<UserSecurityStampService>();
+                var currentStamp = await stampService.GetStampAsync(
+                    userId,
+                    context.HttpContext.RequestAborted);
+
+                if (currentStamp == Guid.Empty || currentStamp != tokenStamp)
+                {
+                    context.Fail("Token has been revoked.");
+                }
             }
         };
     });
@@ -220,6 +249,11 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+});
 
 app.UseExceptionHandler();
 app.UseMiddleware<SecurityHeadersMiddleware>();
