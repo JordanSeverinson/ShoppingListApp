@@ -131,8 +131,8 @@ public class IngredientLineParserTests
         Assert.Equal("Cake", content.Recipe.SubCategories[0].Description);
         Assert.Contains(content.Recipe.SubCategories[0].Ingredients, i => i.Contains("butter", StringComparison.OrdinalIgnoreCase));
         Assert.Equal("Glaze", content.Recipe.SubCategories[1].Description);
-        Assert.Equal(1, content.Recipe.CookingSteps.Count);
-        Assert.Contains("Preheat", content.Recipe.CookingSteps[0], StringComparison.OrdinalIgnoreCase);
+        var step = Assert.Single(content.Recipe.CookingSteps);
+        Assert.Contains("Preheat", step, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
