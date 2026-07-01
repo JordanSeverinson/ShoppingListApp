@@ -48,7 +48,11 @@ public class FriendsService(ApplicationDbContext db)
         var target = await FindUserAsync(request, cancellationToken);
         if (target is null)
         {
-            throw new InvalidOperationException("No user found with that email, phone number, or friend code.");
+            return new SendFriendRequestResponse(
+                Guid.Empty,
+                FriendshipStatus.Pending,
+                "If a matching account exists, your friend request has been sent.",
+                null);
         }
 
         if (target.Id == userId)
@@ -64,13 +68,13 @@ public class FriendsService(ApplicationDbContext db)
                 FriendshipStatus.Accepted => new SendFriendRequestResponse(
                     existing.Id,
                     existing.Status,
-                    $"You are already friends with {target.FirstName}.",
-                    ToFriendSummary(target)),
+                    "You are already connected with this person.",
+                    null),
                 FriendshipStatus.Pending when existing.RequesterId == userId =>
                     new SendFriendRequestResponse(
                         existing.Id,
                         existing.Status,
-                        $"A friend request to {target.FirstName} is already pending.",
+                        "A friend request is already pending.",
                         null),
                 FriendshipStatus.Pending when existing.AddresseeId == userId =>
                     await AcceptExistingRequestAsync(existing, target, cancellationToken),
@@ -97,7 +101,7 @@ public class FriendsService(ApplicationDbContext db)
         return new SendFriendRequestResponse(
             friendship.Id,
             friendship.Status,
-            $"Friend request sent to {target.FirstName}.",
+            "Friend request sent.",
             null);
     }
 
@@ -178,8 +182,8 @@ public class FriendsService(ApplicationDbContext db)
         return new SendFriendRequestResponse(
             existing.Id,
             existing.Status,
-            $"You are now friends with {target.FirstName}.",
-            ToFriendSummary(target));
+            "You are now connected.",
+            null);
     }
 
     private async Task<Friendship?> FindExistingFriendshipAsync(

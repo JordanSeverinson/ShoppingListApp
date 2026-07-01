@@ -22,7 +22,7 @@ const IMPORT_MODE_OPTIONS: { value: RecipeImageImportMode; label: string }[] = [
 const DEFAULT_IMPORT_MODE: RecipeImageImportMode = "FullRecipeWithSteps";
 
 function isImageFile(file: File): boolean {
-  return ACCEPTED_TYPES.has(file.type) || file.type.startsWith("image/");
+  return ACCEPTED_TYPES.has(file.type);
 }
 
 function resetFileInput(input: HTMLInputElement | null) {
@@ -158,7 +158,7 @@ export function RecipeImageUploader({
         <input
           ref={inputRef}
           type="file"
-          accept="image/*"
+          accept=".jpg,.jpeg,.png,.webp,.bmp,.tiff,image/jpeg,image/png,image/webp,image/bmp,image/tiff"
           className="sr-only"
           disabled={uploading}
           onChange={(event) => {

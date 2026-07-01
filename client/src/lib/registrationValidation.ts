@@ -60,3 +60,27 @@ export function formatPhoneInput(value: string): string {
 
   return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
 }
+
+export function validatePassword(password: string): string | null {
+  if (!password) {
+    return "Password is required.";
+  }
+
+  if (password.length < 12) {
+    return "Password must be at least 12 characters.";
+  }
+
+  if (password.length > 128) {
+    return "Password must be at most 128 characters.";
+  }
+
+  const hasUpper = /[A-Z]/.test(password);
+  const hasLower = /[a-z]/.test(password);
+  const hasDigit = /\d/.test(password);
+
+  if (!hasUpper || !hasLower || !hasDigit) {
+    return "Password must include an uppercase letter, a lowercase letter, and a number.";
+  }
+
+  return null;
+}

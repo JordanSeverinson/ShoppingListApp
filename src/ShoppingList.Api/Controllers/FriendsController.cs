@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using ShoppingList.Api.Contracts;
+using ShoppingList.Api.Security;
 using ShoppingList.Api.Services;
 
 namespace ShoppingList.Api.Controllers;
@@ -10,7 +12,8 @@ namespace ShoppingList.Api.Controllers;
 [Authorize]
 public class FriendsController(
     CurrentUserService currentUser,
-    FriendsService friendsService) : ControllerBase
+    FriendsService friendsService,
+    ILogger<FriendsController> logger) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType(typeof(FriendsResponse), StatusCodes.Status200OK)]
@@ -21,6 +24,7 @@ public class FriendsController(
     }
 
     [HttpPost("requests")]
+    [EnableRateLimiting("friend-lookup")]
     [ProducesResponseType(typeof(SendFriendRequestResponse), StatusCodes.Status200OK)]
     public async Task<ActionResult<SendFriendRequestResponse>> SendFriendRequest(
         [FromBody] SendFriendRequest request,
@@ -34,7 +38,8 @@ public class FriendsController(
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(new { error = ex.Message });
+            logger.LogWarning(ex, "Send friend request failed");
+            return BadRequest(new { error = ApiErrors.FriendRequestFailed });
         }
     }
 
@@ -52,7 +57,8 @@ public class FriendsController(
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(new { error = ex.Message });
+            logger.LogWarning(ex, "Accept friend request failed for {RequestId}", requestId);
+            return BadRequest(new { error = ApiErrors.FriendRequestFailed });
         }
     }
 
@@ -71,7 +77,8 @@ public class FriendsController(
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(new { error = ex.Message });
+            logger.LogWarning(ex, "Decline friend request failed for {RequestId}", requestId);
+            return BadRequest(new { error = ApiErrors.FriendRequestFailed });
         }
     }
 
@@ -88,7 +95,8 @@ public class FriendsController(
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(new { error = ex.Message });
+            logger.LogWarning(ex, "Remove friend failed for {FriendUserId}", friendUserId);
+            return BadRequest(new { error = ApiErrors.FriendRequestFailed });
         }
     }
 }

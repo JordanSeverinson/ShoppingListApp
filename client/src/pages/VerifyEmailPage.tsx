@@ -1,22 +1,25 @@
 import { CheckCircle2, ShoppingCart, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import * as usersApi from "../api/users";
 import { APP_NAME } from "../lib/appName";
 
+import { readAuthTokenFromUrl, stripAuthTokenFromHistory } from "../lib/authTokenFromUrl";
+
 export function VerifyEmailPage() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    const token = searchParams.get("token");
+    const token = readAuthTokenFromUrl();
     if (!token) {
       setStatus("error");
       setMessage("This verification link is invalid or has expired.");
       return;
     }
+
+    stripAuthTokenFromHistory();
 
     async function verify() {
       try {
@@ -29,14 +32,14 @@ export function VerifyEmailPage() {
           setStatus("error");
           setMessage(response.message);
         }
-      } catch (err) {
+      } catch {
         setStatus("error");
-        setMessage(err instanceof Error ? err.message : "Could not verify your email.");
+        setMessage("This verification link is invalid or has expired.");
       }
     }
 
     void verify();
-  }, [navigate, searchParams]);
+  }, [navigate]);
 
   return (
     <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4 py-8">

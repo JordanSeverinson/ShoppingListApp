@@ -2,7 +2,9 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import { RequireAuth } from "./components/RequireAuth";
 import { FriendsPage } from "./pages/FriendsPage";
+import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { HomePage } from "./pages/HomePage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { ListDetailPage } from "./pages/ListDetailPage";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
@@ -14,15 +16,17 @@ import { ShoppingListsPage } from "./pages/ShoppingListsPage";
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
+    <BrowserRouter>
+      <AuthProvider>
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />
-          <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/friends" element={<FriendsPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
+          <Route path="/friends" element={<RequireAuth><FriendsPage /></RequireAuth>} />
           <Route path="/lists" element={<RequireAuth><ShoppingListsPage /></RequireAuth>} />
           <Route path="/lists/:listId" element={<RequireAuth><ListDetailPage /></RequireAuth>} />
           <Route path="/recipes" element={<RequireAuth><RecipesPage /></RequireAuth>} />
@@ -30,7 +34,7 @@ export default function App() {
           <Route path="/recipes/:recipeId" element={<RequireAuth><RecipeDetailPage readOnly /></RequireAuth>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+      </AuthProvider>
+    </BrowserRouter>
   );
 }

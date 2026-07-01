@@ -18,7 +18,6 @@ export interface UpdateUserProfilePayload {
 }
 
 export interface LoginResponse {
-  token: string;
   user: UserProfile;
 }
 
@@ -36,6 +35,15 @@ export interface RegisterResponse {
 
 export interface VerifyEmailResponse {
   verified: boolean;
+  message: string;
+}
+
+export interface ForgotPasswordResponse {
+  message: string;
+}
+
+export interface ResetPasswordResponse {
+  success: boolean;
   message: string;
 }
 

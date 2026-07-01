@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
+using ShoppingList.Api.Security;
 using ShoppingList.Infrastructure.Persistence;
 
 namespace ShoppingList.Api.Services;
@@ -16,7 +17,8 @@ public class EmailVerificationService(
         Domain.Entities.User user,
         CancellationToken cancellationToken = default)
     {
-        user.EmailVerificationToken = GenerateToken();
+        var token = GenerateToken();
+        user.EmailVerificationToken = TokenHasher.Hash(token);
         user.EmailVerificationTokenExpiresAt = DateTime.UtcNow.Add(TokenLifetime);
         user.UpdatedAt = DateTime.UtcNow;
 
@@ -24,7 +26,7 @@ public class EmailVerificationService(
 
         var frontendBaseUrl = configuration["App:FrontendBaseUrl"] ?? "http://localhost:5173";
         var verificationUrl =
-            $"{frontendBaseUrl.TrimEnd('/')}/verify-email?token={Uri.EscapeDataString(user.EmailVerificationToken)}";
+            $"{frontendBaseUrl.TrimEnd('/')}/verify-email#token={Uri.EscapeDataString(token)}";
 
         await emailSender.SendVerificationEmailAsync(
             user.Email,
@@ -42,8 +44,9 @@ public class EmailVerificationService(
             return false;
         }
 
+        var tokenHash = TokenHasher.Hash(token.Trim());
         var user = await db.Users.FirstOrDefaultAsync(
-            u => u.EmailVerificationToken == token,
+            u => u.EmailVerificationToken == tokenHash,
             cancellationToken);
 
         if (user is null)

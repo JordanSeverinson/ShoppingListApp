@@ -1,11 +1,13 @@
 import { ShoppingCart, UserPlus } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import * as usersApi from "../api/users";
+import { useAuth } from "../context/AuthContext";
 import { APP_NAME } from "../lib/appName";
 import {
   formatPhoneInput,
   validateEmail,
+  validatePassword,
   validatePhone,
   validatePreferredName,
 } from "../lib/registrationValidation";
@@ -13,6 +15,7 @@ import { GENDER_OPTIONS } from "../types/user";
 
 export function RegisterPage() {
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
   const [preferredName, setPreferredName] = useState("");
   const [gender, setGender] = useState("");
   const [email, setEmail] = useState("");
@@ -21,6 +24,10 @@ export function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  if (isAuthenticated) {
+    return <Navigate to="/" replace />;
+  }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -48,14 +55,9 @@ export function RegisterPage() {
       return;
     }
 
-    if (!password) {
-      setError("Password is required.");
-      setBusy(false);
-      return;
-    }
-
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      setError(passwordError);
       setBusy(false);
       return;
     }
@@ -164,7 +166,8 @@ export function RegisterPage() {
             onChange={(event) => setPassword(event.target.value)}
             autoComplete="new-password"
             required
-            minLength={6}
+            minLength={12}
+            maxLength={128}
             className="w-full rounded-xl border border-border px-4 py-2.5 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
           />
         </label>
@@ -177,7 +180,8 @@ export function RegisterPage() {
             onChange={(event) => setConfirmPassword(event.target.value)}
             autoComplete="new-password"
             required
-            minLength={6}
+            minLength={12}
+            maxLength={128}
             className="w-full rounded-xl border border-border px-4 py-2.5 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
           />
         </label>

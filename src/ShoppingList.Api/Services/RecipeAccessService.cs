@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ShoppingList.Api.Contracts;
 using ShoppingList.Application.Recipes;
@@ -23,6 +24,7 @@ public class RecipeAccessService(ApplicationDbContext db)
         await AccessibleRecipes(userId)
             .Include(r => r.Ingredients)
             .Include(r => r.Steps)
+            .Include(r => r.SharedPermissions)
             .FirstOrDefaultAsync(r => r.Id == recipeId, cancellationToken);
 
     public async Task<Recipe?> GetAccessibleRecipeMetadataAsync(
@@ -30,6 +32,7 @@ public class RecipeAccessService(ApplicationDbContext db)
         Guid userId,
         CancellationToken cancellationToken = default) =>
         await AccessibleRecipes(userId)
+            .Include(r => r.SharedPermissions)
             .FirstOrDefaultAsync(r => r.Id == recipeId, cancellationToken);
 
     public static RecipeSummaryDto ToSummary(Recipe recipe, Guid userId) =>
@@ -52,6 +55,26 @@ public class RecipeAccessService(ApplicationDbContext db)
 
     public static RecipeStepDto ToStepDto(RecipeStep step) =>
         new(step.Id, step.RecipeId, step.Text, step.SortOrder);
+
+    public static bool CanEdit(Recipe recipe, Guid userId) =>
+        recipe.OwnerId == userId
+        || recipe.SharedPermissions.Any(p =>
+            p.UserId == userId
+            && p.Status == ListShareStatus.Accepted
+            && p.PermissionLevel is PermissionLevel.Edit or PermissionLevel.Admin);
+
+    public static ActionResult? RequireEditable(Recipe recipe, Guid userId)
+    {
+        if (!CanEdit(recipe, userId))
+        {
+            return new ObjectResult(new { error = "You do not have permission to edit this recipe." })
+            {
+                StatusCode = StatusCodes.Status403Forbidden,
+            };
+        }
+
+        return null;
+    }
 
     public static RecipeContentDocument ResolveContent(Recipe recipe)
     {

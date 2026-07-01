@@ -64,8 +64,12 @@ export function FriendsPage() {
   }, []);
 
   useEffect(() => {
+    if (!isAuthenticated || authLoading) {
+      return;
+    }
+
     void load();
-  }, [load]);
+  }, [load, isAuthenticated, authLoading]);
 
   const selectedLookup = LOOKUP_OPTIONS.find((option) => option.method === lookupMethod)!;
 

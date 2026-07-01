@@ -72,8 +72,7 @@ export function HomePage() {
                 <button
                   type="button"
                   onClick={() => {
-                    logout();
-                    navigate("/");
+                    void logout().then(() => navigate("/"));
                   }}
                   className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-white px-3 py-2 text-sm font-medium text-muted transition hover:border-red-200 hover:bg-red-50 hover:text-red-700"
                 >

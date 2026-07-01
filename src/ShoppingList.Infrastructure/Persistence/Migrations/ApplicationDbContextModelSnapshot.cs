@@ -389,6 +389,13 @@ namespace ShoppingList.Infrastructure.Persistence.Migrations
                         .HasMaxLength(512)
                         .HasColumnType("character varying(512)");
 
+                    b.Property<string>("PasswordResetToken")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTime?>("PasswordResetTokenExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("PhoneNumber")
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
@@ -408,6 +415,10 @@ namespace ShoppingList.Infrastructure.Persistence.Migrations
                     b.HasIndex("EmailVerificationToken")
                         .IsUnique()
                         .HasFilter("\"EmailVerificationToken\" IS NOT NULL");
+
+                    b.HasIndex("PasswordResetToken")
+                        .IsUnique()
+                        .HasFilter("\"PasswordResetToken\" IS NOT NULL");
 
                     b.HasIndex("FriendCode")
                         .IsUnique();

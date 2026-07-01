@@ -2,9 +2,13 @@ using Microsoft.AspNetCore.Authorization;
 
 using Microsoft.AspNetCore.Mvc;
 
+using Microsoft.AspNetCore.RateLimiting;
+
 using Microsoft.EntityFrameworkCore;
 
 using ShoppingList.Api.Contracts;
+
+using ShoppingList.Api.Security;
 
 using ShoppingList.Api.Services;
 
@@ -15,6 +19,8 @@ using ShoppingList.Application.Recipes;
 using ShoppingList.Domain.Entities;
 
 using ShoppingList.Domain.Recipes;
+
+using System.Text.Json;
 
 using ShoppingList.Infrastructure.Persistence;
 
@@ -40,7 +46,11 @@ public class RecipesController(
 
     RecipeAccessService recipeAccess,
 
-    RecipeSharingService recipeSharing) : ControllerBase
+    RecipeSharingService recipeSharing,
+
+    OcrProcessingGate ocrGate,
+
+    ILogger<RecipesController> logger) : ControllerBase
 
 {
 
@@ -172,7 +182,9 @@ public class RecipesController(
 
         {
 
-            return BadRequest(new { error = ex.Message });
+            logger.LogWarning(ex, "Share recipe failed for {RecipeId}", recipeId);
+
+            return BadRequest(new { error = ApiErrors.ShareFailed });
 
         }
 
@@ -208,7 +220,9 @@ public class RecipesController(
 
         {
 
-            return BadRequest(new { error = ex.Message });
+            logger.LogWarning(ex, "Accept recipe share failed for {PermissionId}", permissionId);
+
+            return BadRequest(new { error = ApiErrors.ShareFailed });
 
         }
 
@@ -244,7 +258,9 @@ public class RecipesController(
 
         {
 
-            return BadRequest(new { error = ex.Message });
+            logger.LogWarning(ex, "Decline recipe share failed for {PermissionId}", permissionId);
+
+            return BadRequest(new { error = ApiErrors.ShareFailed });
 
         }
 
@@ -356,6 +372,18 @@ public class RecipesController(
 
 
 
+        var editableCheck = RecipeAccessService.RequireEditable(recipe, userId);
+
+        if (editableCheck is not null)
+
+        {
+
+            return editableCheck;
+
+        }
+
+
+
         recipe.Name = request.Name.Trim();
 
         recipe.UpdatedAt = DateTime.UtcNow;
@@ -388,21 +416,11 @@ public class RecipesController(
 
 
 
-        if (recipe is null)
+        if (recipe is null || recipe.OwnerId != userId)
 
         {
 
-            return NotFound(new { error = "Recipe not found." });
-
-        }
-
-
-
-        if (recipe.OwnerId != userId)
-
-        {
-
-            return BadRequest(new { error = "Only the recipe owner can delete this recipe." });
+            return NotFound(new { error = ApiErrors.RecipeNotFound });
 
         }
 
@@ -457,6 +475,18 @@ public class RecipesController(
         {
 
             return NotFound(new { error = "Recipe not found." });
+
+        }
+
+
+
+        var createIngredientEditableCheck = RecipeAccessService.RequireEditable(recipe, userId);
+
+        if (createIngredientEditableCheck is not null)
+
+        {
+
+            return createIngredientEditableCheck;
 
         }
 
@@ -540,6 +570,18 @@ public class RecipesController(
 
 
 
+        var deleteIngredientEditableCheck = RecipeAccessService.RequireEditable(recipe, userId);
+
+        if (deleteIngredientEditableCheck is not null)
+
+        {
+
+            return deleteIngredientEditableCheck;
+
+        }
+
+
+
         var rowsDeleted = await db.RecipeIngredients
 
             .Where(i => i.RecipeId == recipeId && i.Id == ingredientId)
@@ -608,6 +650,18 @@ public class RecipesController(
 
 
 
+        var deleteManyEditableCheck = RecipeAccessService.RequireEditable(recipe, userId);
+
+        if (deleteManyEditableCheck is not null)
+
+        {
+
+            return deleteManyEditableCheck;
+
+        }
+
+
+
         var requestedIds = (request.IngredientIds ?? [])
 
             .Where(id => id != Guid.Empty)
@@ -623,6 +677,16 @@ public class RecipesController(
         {
 
             return Ok(new DeleteRecipeIngredientsResponse(0, []));
+
+        }
+
+
+
+        if (requestedIds.Count > RequestLimits.MaxBulkOperationIds)
+
+        {
+
+            return BadRequest(new { error = $"At most {RequestLimits.MaxBulkOperationIds} ingredients can be deleted per request." });
 
         }
 
@@ -706,6 +770,18 @@ public class RecipesController(
 
 
 
+        var replaceStepsEditableCheck = RecipeAccessService.RequireEditable(recipe, userId);
+
+        if (replaceStepsEditableCheck is not null)
+
+        {
+
+            return replaceStepsEditableCheck;
+
+        }
+
+
+
         var stepTexts = (request.Steps ?? [])
 
             .Select(text => text.Trim())
@@ -713,6 +789,16 @@ public class RecipesController(
             .Where(text => text.Length > 0)
 
             .ToList();
+
+
+
+        if (stepTexts.Count > RequestLimits.MaxRecipeSteps)
+
+        {
+
+            return BadRequest(new { error = $"At most {RequestLimits.MaxRecipeSteps} steps are allowed." });
+
+        }
 
 
 
@@ -804,6 +890,30 @@ public class RecipesController(
 
 
 
+        var saveContentEditableCheck = RecipeAccessService.RequireEditable(recipe, userId);
+
+        if (saveContentEditableCheck is not null)
+
+        {
+
+            return saveContentEditableCheck;
+
+        }
+
+
+
+        var serializedContent = JsonSerializer.Serialize(request.Content ?? new RecipeContentDocument());
+
+        if (serializedContent.Length > RequestLimits.MaxRecipeContentJsonChars)
+
+        {
+
+            return BadRequest(new { error = "Recipe content is too large." });
+
+        }
+
+
+
         recipe.Content = request.Content ?? new RecipeContentDocument();
 
         recipe.UpdatedAt = DateTime.UtcNow;
@@ -819,6 +929,8 @@ public class RecipesController(
 
 
     [HttpPost("{recipeId:guid}/upload-image")]
+
+    [EnableRateLimiting("ocr")]
 
     [RequestSizeLimit(10 * 1024 * 1024)]
 
@@ -854,6 +966,18 @@ public class RecipesController(
 
 
 
+        var uploadEditableCheck = RecipeAccessService.RequireEditable(recipe, userId);
+
+        if (uploadEditableCheck is not null)
+
+        {
+
+            return uploadEditableCheck;
+
+        }
+
+
+
         if (image is null || image.Length == 0)
 
         {
@@ -864,11 +988,11 @@ public class RecipesController(
 
 
 
-        if (!AllowedContentTypes.Contains(image.ContentType))
+        if (!ImageFileValidator.IsAllowedContentType(image.ContentType))
 
         {
 
-            return BadRequest(new { error = $"Unsupported content type: {image.ContentType}" });
+            return BadRequest(new { error = "Unsupported image type." });
 
         }
 
@@ -900,7 +1024,45 @@ public class RecipesController(
 
             await using var stream = image.OpenReadStream();
 
-            parsed = await ingredientParser.ParseFromStreamAsync(stream, mode, cancellationToken);
+            var header = new byte[12];
+
+            var headerLength = await stream.ReadAsync(header.AsMemory(0, header.Length), cancellationToken);
+
+            if (!ImageFileValidator.HasValidImageSignature(header.AsSpan(0, headerLength)))
+
+            {
+
+                return BadRequest(new { error = "The uploaded file is not a supported image." });
+
+            }
+
+
+
+            await using var uploadStream = new MemoryStream();
+
+            if (headerLength > 0)
+
+            {
+
+                await uploadStream.WriteAsync(header.AsMemory(0, headerLength), cancellationToken);
+
+            }
+
+
+
+            await stream.CopyToAsync(uploadStream, cancellationToken);
+
+            uploadStream.Position = 0;
+
+
+
+            parsed = await ocrGate.RunAsync(
+
+                () => ingredientParser.ParseFromStreamAsync(uploadStream, mode, cancellationToken),
+
+                cancellationToken);
+
+
 
             parsedIngredients = parsed.Ingredients;
 
@@ -908,19 +1070,27 @@ public class RecipesController(
 
         }
 
-        catch (DirectoryNotFoundException ex)
+        catch (DirectoryNotFoundException)
 
         {
 
-            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = ex.Message });
+            return StatusCode(
+
+                StatusCodes.Status503ServiceUnavailable,
+
+                new { error = "Image import is unavailable because OCR data is not installed." });
 
         }
 
-        catch (InvalidOperationException ex)
+        catch (InvalidOperationException)
 
         {
 
-            return StatusCode(StatusCodes.Status500InternalServerError, new { error = ex.Message });
+            return StatusCode(
+
+                StatusCodes.Status500InternalServerError,
+
+                new { error = "Could not process the uploaded image." });
 
         }
 
@@ -1137,16 +1307,6 @@ public class RecipesController(
             $"{string.Join(" and ", messageParts)} from image."));
 
     }
-
-
-
-    private static readonly HashSet<string> AllowedContentTypes = new(StringComparer.OrdinalIgnoreCase)
-
-    {
-
-        "image/jpeg", "image/jpg", "image/png", "image/webp", "image/bmp", "image/tiff"
-
-    };
 
 }
 

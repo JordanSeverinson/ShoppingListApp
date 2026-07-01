@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using ShoppingList.Api.Contracts;
 using ShoppingList.Api.Hubs;
+using ShoppingList.Api.Security;
 using ShoppingList.Api.Services;
 using ShoppingList.Application.Hubs;
 using ShoppingList.Domain.Entities;
@@ -22,7 +23,8 @@ public class ListsController(
     CurrentUserService currentUser,
     ListAccessService listAccess,
     ListSharingService listSharing,
-    RecipeAccessService recipeAccess) : ControllerBase
+    RecipeAccessService recipeAccess,
+    ILogger<ListsController> logger) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType(typeof(ListSummaryResponse), StatusCodes.Status200OK)]
@@ -95,7 +97,8 @@ public class ListsController(
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(new { error = ex.Message });
+            logger.LogWarning(ex, "Share list failed for {ListId}", listId);
+            return BadRequest(new { error = ApiErrors.ShareFailed });
         }
     }
 
@@ -113,7 +116,8 @@ public class ListsController(
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(new { error = ex.Message });
+            logger.LogWarning(ex, "Accept list share failed for {PermissionId}", permissionId);
+            return BadRequest(new { error = ApiErrors.ShareFailed });
         }
     }
 
@@ -131,7 +135,8 @@ public class ListsController(
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(new { error = ex.Message });
+            logger.LogWarning(ex, "Decline list share failed for {PermissionId}", permissionId);
+            return BadRequest(new { error = ApiErrors.ShareFailed });
         }
     }
 
@@ -149,7 +154,8 @@ public class ListsController(
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(new { error = ex.Message });
+            logger.LogWarning(ex, "Leave list failed for {ListId}", listId);
+            return BadRequest(new { error = ApiErrors.ShareFailed });
         }
     }
 
@@ -177,7 +183,7 @@ public class ListsController(
             list.Name,
             list.IsArchived,
             list.OwnerId == userId,
-            CanEdit: !list.IsArchived,
+            CanEdit: ListAccessService.CanEdit(list, userId) && !list.IsArchived,
             items));
     }
 
@@ -199,7 +205,13 @@ public class ListsController(
 
         if (list is null)
         {
-            return NotFound(new { error = "List not found." });
+            return NotFound(new { error = ApiErrors.ListNotFound });
+        }
+
+        var renameCheck = ListAccessService.RequireRenamable(list, userId);
+        if (renameCheck is not null)
+        {
+            return renameCheck;
         }
 
         list.Name = request.Name.Trim();
@@ -216,21 +228,17 @@ public class ListsController(
         CancellationToken cancellationToken)
     {
         var userId = currentUser.GetUserId();
-        var list = await listAccess.GetAccessibleListAsync(listId, userId, cancellationToken);
+        var list = await db.ShoppingLists
+            .FirstOrDefaultAsync(l => l.Id == listId, cancellationToken);
 
-        if (list is null)
+        if (list is null || list.OwnerId != userId)
         {
-            return NotFound(new { error = "List not found." });
+            return NotFound(new { error = ApiErrors.ListNotFound });
         }
 
         if (list.IsArchived)
         {
             return BadRequest(new { error = "List is already archived." });
-        }
-
-        if (list.OwnerId != userId)
-        {
-            return BadRequest(new { error = "Only the list owner can archive this list." });
         }
 
         list.IsArchived = true;
@@ -250,14 +258,9 @@ public class ListsController(
         var list = await db.ShoppingLists
             .FirstOrDefaultAsync(l => l.Id == listId, cancellationToken);
 
-        if (list is null)
+        if (list is null || list.OwnerId != userId)
         {
-            return NotFound(new { error = "List not found." });
-        }
-
-        if (list.OwnerId != userId)
-        {
-            return BadRequest(new { error = "Only the list owner can delete this list." });
+            return NotFound(new { error = ApiErrors.ListNotFound });
         }
 
         db.ShoppingLists.Remove(list);
@@ -396,7 +399,7 @@ public class ListsController(
             return NotFound(new { error = "List not found." });
         }
 
-        var editableCheck = ListAccessService.RequireEditable(list);
+        var editableCheck = ListAccessService.RequireEditable(list, userId);
         if (editableCheck is not null)
         {
             return editableCheck;
@@ -452,7 +455,7 @@ public class ListsController(
             return NotFound(new { error = "List not found." });
         }
 
-        var editableCheck = ListAccessService.RequireEditable(list);
+        var editableCheck = ListAccessService.RequireEditable(list, userId);
         if (editableCheck is not null)
         {
             return editableCheck;
@@ -494,7 +497,7 @@ public class ListsController(
             return NotFound(new { error = "List not found." });
         }
 
-        var editableCheck = ListAccessService.RequireEditable(list);
+        var editableCheck = ListAccessService.RequireEditable(list, userId);
         if (editableCheck is not null)
         {
             return editableCheck;
@@ -508,6 +511,11 @@ public class ListsController(
         if (requestedIds.Count == 0)
         {
             return Ok(new DeleteItemsResponse(0, []));
+        }
+
+        if (requestedIds.Count > RequestLimits.MaxBulkOperationIds)
+        {
+            return BadRequest(new { error = $"At most {RequestLimits.MaxBulkOperationIds} items can be deleted per request." });
         }
 
         var itemIds = await db.ListItems
@@ -611,7 +619,7 @@ public class ListsController(
             return NotFound(new { error = "List not found." });
         }
 
-        var editableCheck = ListAccessService.RequireEditable(list);
+        var editableCheck = ListAccessService.RequireEditable(list, userId);
         if (editableCheck is not null)
         {
             return editableCheck;
@@ -634,7 +642,7 @@ public class ListsController(
             return NotFound(new { error = "List not found." });
         }
 
-        var editableCheck = ListAccessService.RequireEditable(list);
+        var editableCheck = ListAccessService.RequireEditable(list, userId);
         if (editableCheck is not null)
         {
             return editableCheck;

@@ -1,4 +1,4 @@
-import { API_BASE, apiRequest, buildAuthHeaders } from "../lib/apiClient";
+import { apiKeepaliveRequest, apiRequest } from "../lib/apiClient";
 import type {
   CheckAllItemsResponse,
   CreateItemPayload,
@@ -98,35 +98,13 @@ export function deleteItems(
   };
 
   if (options?.keepalive) {
-    return keepaliveRequest<DeleteItemsResponse>(
+    return apiKeepaliveRequest<DeleteItemsResponse>(
       `/api/lists/${listId}/items/delete-many`,
       init,
     );
   }
 
   return apiRequest<DeleteItemsResponse>(`/api/lists/${listId}/items/delete-many`, init);
-}
-
-async function keepaliveRequest<T>(path: string, init: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    keepalive: true,
-    headers: {
-      ...buildAuthHeaders(),
-      ...init.headers,
-    },
-  });
-
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(body?.error ?? `Request failed (${response.status})`);
-  }
-
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return (await response.json()) as T;
 }
 
 export function checkAllItems(

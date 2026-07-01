@@ -7,8 +7,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useNavigate } from "react-router-dom";
 import * as usersApi from "../api/users";
-import { clearAuthToken, getAuthToken, setAuthToken } from "../lib/authStorage";
+import { isApiError } from "../lib/apiError";
+import { setUnauthorizedHandler } from "../lib/apiClient";
 import type { RegisterPayload, UserProfile } from "../types/user";
 
 interface AuthContextValue {
@@ -17,39 +19,48 @@ interface AuthContextValue {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const navigate = useNavigate();
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   const refreshUser = useCallback(async () => {
-    if (!getAuthToken()) {
-      setUser(null);
-      return;
-    }
-
-    const profile = await usersApi.fetchCurrentUser();
-    setUser(profile);
-  }, []);
-
-  useEffect(() => {
-    async function bootstrap() {
-      if (!getAuthToken()) {
+    try {
+      const profile = await usersApi.fetchCurrentUser();
+      setUser(profile);
+    } catch (err) {
+      if (isApiError(err) && err.status === 401) {
         setUser(null);
-        setLoading(false);
         return;
       }
 
+      throw err;
+    }
+  }, []);
+
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      setUser(null);
+      navigate("/login", { replace: true });
+    });
+
+    return () => setUnauthorizedHandler(null);
+  }, [navigate]);
+
+  useEffect(() => {
+    async function bootstrap() {
       try {
         await refreshUser();
-      } catch {
-        clearAuthToken();
-        setUser(null);
+      } catch (err) {
+        if (isApiError(err) && err.status === 401) {
+          setUser(null);
+        }
       } finally {
         setLoading(false);
       }
@@ -60,7 +71,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const response = await usersApi.login(email, password);
-    setAuthToken(response.token);
     setUser(response.user);
   }, []);
 
@@ -68,9 +78,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await usersApi.register(payload);
   }, []);
 
-  const logout = useCallback(() => {
-    clearAuthToken();
-    setUser(null);
+  const logout = useCallback(async () => {
+    try {
+      await usersApi.logout();
+    } finally {
+      setUser(null);
+    }
   }, []);
 
   const value = useMemo(

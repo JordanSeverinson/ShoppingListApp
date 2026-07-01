@@ -24,7 +24,7 @@ Shop together and cook together — shared grocery lists, saved recipes, and rea
 ### Accounts and profile
 - Register with email, password, preferred name, optional phone and gender
 - Email verification required before sign-in
-- JWT authentication; token stored in the browser and sent on API/SignalR requests
+- JWT authentication via **httpOnly cookie** (`auth_token`); session sent automatically on API and SignalR requests
 - Edit profile (email, phone, preferred name, gender) and view your **friend code**
 
 ### Friends
@@ -138,10 +138,12 @@ npm run dev
 | `Jwt:Key` | Signing secret — **required**, min ~32 chars |
 | `Cors:AllowedOrigins` | Frontend origin(s), default `http://localhost:5173` |
 | `App:FrontendBaseUrl` | Base URL for email verification links |
+| `AllowedHosts` | Host header allowlist (`localhost` in dev; set your domains in production) |
+| `Email:*` | SMTP settings for production email (see `appsettings.Production.local.json.example`) |
 | `Tesseract:DataPath` | Path to tessdata folder (default `./tessdata`) |
 | `Tesseract:Language` | OCR language (default `eng`) |
 
-Local overrides go in `appsettings.Development.local.json` (see `.example` file).
+Local overrides go in `appsettings.Development.local.json` (see `.example` file). Production secrets go in `appsettings.Production.local.json` (see `.example` file).
 
 ### Client (`client/.env`)
 
@@ -152,8 +154,11 @@ Local overrides go in `appsettings.Development.local.json` (see `.example` file)
 ## Authentication
 
 1. **Register** — `POST /api/auth/register` creates a user with `EmailVerified = false`.
-2. **Verify** — a link is sent to `/verify-email?token=…` on the frontend, which calls `GET /api/auth/verify-email?token=…`.
-3. **Login** — `POST /api/auth/login` returns a JWT and user profile. Login is blocked until email is verified (`403` with `code: "email_not_verified"`).
+2. **Verify** — a link is sent to `/verify-email#token=…` on the frontend, which calls `POST /api/auth/verify-email` with the token.
+3. **Login** — `POST /api/auth/login` sets an httpOnly session cookie and returns the user profile. Login is blocked until email is verified (same generic error as wrong password).
+4. **Forgot password** — `POST /api/auth/forgot-password` with `{ email }` always returns the same message (no account enumeration). If the account exists and is verified, a reset link is sent to `/reset-password#token=…`.
+5. **Reset password** — the reset page calls `POST /api/auth/reset-password` with `{ token, password }`. Tokens expire after 1 hour and are single-use.
+6. **Logout** — `POST /api/auth/logout` clears the cookie and revokes the session server-side.
 
 ### Development email
 
@@ -161,12 +166,12 @@ The API uses `DevelopmentEmailSender`, which **does not send real email**. After
 
 ```
 [DEV EMAIL] Verification email for user@example.com (Name)
-Link: http://localhost:5173/verify-email?token=...
+Link: http://localhost:5173/verify-email#token=...
 ```
 
-Copy that link into your browser to verify, then sign in.
+Copy that link into your browser to verify, then sign in. Password reset emails are logged the same way (`[DEV EMAIL] Password reset email…` with a link to `/reset-password#token=…`).
 
-All routes except `/api/auth/*` require `Authorization: Bearer <token>`. The React client attaches the token automatically; SignalR passes it via `accessTokenFactory`.
+All routes except `/api/auth/register`, `/api/auth/login`, `/api/auth/verify-email`, `/api/auth/forgot-password`, and `/api/auth/reset-password` require a valid session cookie (or `Authorization: Bearer` for API tools). The React client uses `credentials: "include"`; SignalR uses the same cookie via `withCredentials`.
 
 ## Sharing model
 
@@ -187,6 +192,8 @@ Shared grocery lists can be **left** by non-owners (`POST /api/lists/{listId}/le
 | `/login` | Public | Sign in |
 | `/register` | Public | Create account |
 | `/verify-email` | Public | Email verification handler |
+| `/forgot-password` | Public | Request a password reset link |
+| `/reset-password` | Public | Set a new password from email link |
 | `/profile` | Required | Edit profile, friend code |
 | `/friends` | Required | Friends and requests |
 | `/lists` | Required | Active, archived, and pending list shares |
@@ -204,8 +211,12 @@ Unless noted, all endpoints require a valid JWT. JSON bodies use **camelCase**.
 | Method | Route | Description |
 |--------|-------|-------------|
 | POST | `/api/auth/register` | Create account |
-| POST | `/api/auth/login` | Sign in → `{ token, user }` |
-| GET | `/api/auth/verify-email?token=` | Verify email address |
+| POST | `/api/auth/login` | Sign in → `{ user }` (sets httpOnly cookie) |
+| POST | `/api/auth/logout` | Clear session cookie |
+| POST | `/api/auth/verify-email` | Verify email address (`{ token }`) |
+| GET | `/api/auth/verify-email?token=` | Verify email (legacy) |
+| POST | `/api/auth/forgot-password` | Request password reset (`{ email }`) |
+| POST | `/api/auth/reset-password` | Reset password (`{ token, password }`) |
 
 ### Users
 
@@ -270,7 +281,7 @@ Interactive documentation: http://localhost:5294/swagger (Development only).
 
 ## Real-time updates (SignalR)
 
-**Hub:** `/hubs/shopping-list` (requires JWT)
+**Hub:** `/hubs/shopping-list` (requires session cookie or Bearer token)
 
 **Client → server**
 
@@ -340,7 +351,31 @@ cd client
 npm run build
 ```
 
-Set `VITE_API_URL` to your deployed API origin so requests do not rely on the dev proxy.
+### Production deployment
+
+1. Copy and edit production secrets:
+
+```powershell
+copy src\ShoppingList.Api\appsettings.Production.local.json.example src\ShoppingList.Api\appsettings.Production.local.json
+```
+
+Set `ConnectionStrings`, `Jwt:Key`, `Cors:AllowedOrigins`, `App:FrontendBaseUrl`, `AllowedHosts`, and `Email` (SMTP) values.
+
+2. Build and publish the API with `ASPNETCORE_ENVIRONMENT=Production`.
+
+3. Build the client with `VITE_API_URL` set to your API origin (CSP `connect-src` is injected at build time):
+
+```powershell
+cd client
+$env:VITE_API_URL="https://api.your-domain.com"
+npm run build
+```
+
+4. Run dependency audits before deploy:
+
+```powershell
+.\scripts\audit-deps.ps1
+```
 
 ### CORS
 
@@ -360,8 +395,7 @@ Covers ingredient line parsing and recipe content building.
 |---------|--------------|-----|
 | `relation "shopping_lists" does not exist` | Migrations not applied | `dotnet ef database update` or restart API in Development |
 | `Jwt:Key is not configured` | Missing JWT secret | Set `Jwt:Key` in appsettings or `.local.json` |
-| 401 on API calls | Not signed in or expired token | Sign in again |
-| 403 `email_not_verified` on login | Email not verified | Use verification link from API console log |
+| 401 on API calls | Not signed in or expired session | Sign in again |
 | OCR upload 503 / no ingredients | Missing tessdata | Run `.\scripts\download-tessdata.ps1` |
 | SignalR disconnected | API not running or auth missing | Ensure API is up and you are logged in |
 | `dotnet run` file lock errors | API already running | Stop existing `ShoppingList.Api` process |

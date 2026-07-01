@@ -65,12 +65,38 @@ public static partial class RegistrationValidator
             return "Password is required.";
         }
 
-        if (password.Length < 6)
+        if (password.Length < 12)
         {
-            return "Password must be at least 6 characters.";
+            return "Password must be at least 12 characters.";
+        }
+
+        if (password.Length > 128)
+        {
+            return "Password must be at most 128 characters.";
+        }
+
+        var hasUpper = password.Any(char.IsUpper);
+        var hasLower = password.Any(char.IsLower);
+        var hasDigit = password.Any(char.IsDigit);
+
+        if (!hasUpper || !hasLower || !hasDigit)
+        {
+            return "Password must include an uppercase letter, a lowercase letter, and a number.";
         }
 
         return null;
+    }
+
+    public static string? ValidateGender(string? gender, IReadOnlySet<string> allowedGenders)
+    {
+        if (string.IsNullOrWhiteSpace(gender))
+        {
+            return null;
+        }
+
+        return allowedGenders.Contains(gender.Trim())
+            ? null
+            : "Select a valid gender option.";
     }
 
     public static string FormatPhone(string phone)

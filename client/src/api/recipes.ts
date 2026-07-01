@@ -1,4 +1,4 @@
-import { apiFormRequest, apiRequest, API_BASE, buildAuthHeaders } from "../lib/apiClient";
+import { apiFormRequest, apiKeepaliveRequest, apiRequest } from "../lib/apiClient";
 import type {
   CreateRecipeIngredientPayload,
   DeleteRecipeIngredientsResponse,
@@ -68,28 +68,6 @@ export function createRecipeIngredient(
   });
 }
 
-async function keepaliveRequest<T>(path: string, init: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    keepalive: true,
-    headers: {
-      ...buildAuthHeaders(),
-      ...init.headers,
-    },
-  });
-
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(body?.error ?? `Request failed (${response.status})`);
-  }
-
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return (await response.json()) as T;
-}
-
 export function deleteRecipeIngredients(
   recipeId: string,
   ingredientIds: string[],
@@ -102,7 +80,7 @@ export function deleteRecipeIngredients(
   };
 
   if (options?.keepalive) {
-    return keepaliveRequest<DeleteRecipeIngredientsResponse>(path, init);
+    return apiKeepaliveRequest<DeleteRecipeIngredientsResponse>(path, init);
   }
 
   return apiRequest<DeleteRecipeIngredientsResponse>(path, init);

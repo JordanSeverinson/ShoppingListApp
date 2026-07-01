@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link, Navigate } from "react-router-dom";
 import * as usersApi from "../api/users";
 import { useAuth } from "../context/AuthContext";
+import { validatePreferredName } from "../lib/registrationValidation";
 import { ShareCodeCopy } from "../components/ShareCodeCopy";
 import { APP_NAME } from "../lib/appName";
 import { GENDER_OPTIONS } from "../types/user";
@@ -43,6 +44,13 @@ export function ProfilePage() {
     setBusy(true);
     setError(null);
     setMessage(null);
+
+    const preferredNameError = validatePreferredName(preferredName);
+    if (preferredNameError) {
+      setError(preferredNameError);
+      setBusy(false);
+      return;
+    }
 
     try {
       await usersApi.updateCurrentUser({

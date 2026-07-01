@@ -32,6 +32,6 @@ internal static class TesseractPathResolver
 
         throw new DirectoryNotFoundException(
             "Tesseract language data not found. Run .\\scripts\\download-tessdata.ps1 from the repo root, " +
-            $"or set Tesseract:DataPath in appsettings. Searched: {string.Join("; ", candidates)}");
+            "or set Tesseract:DataPath in appsettings.");
     }
 }

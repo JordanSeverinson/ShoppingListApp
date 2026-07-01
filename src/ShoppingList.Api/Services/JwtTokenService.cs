@@ -14,7 +14,7 @@ public class JwtTokenService(IConfiguration configuration)
         var key = jwtSection["Key"] ?? throw new InvalidOperationException("Jwt:Key is not configured.");
         var issuer = jwtSection["Issuer"];
         var audience = jwtSection["Audience"];
-        var expiryMinutes = int.TryParse(jwtSection["ExpiryMinutes"], out var minutes) ? minutes : 10080;
+        var expiryMinutes = int.TryParse(jwtSection["ExpiryMinutes"], out var minutes) ? minutes : 1440;
 
         var claims = new List<Claim>
         {

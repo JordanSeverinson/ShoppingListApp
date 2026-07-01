@@ -28,6 +28,16 @@ public record RegisterRequest(
 
 public record RegisterResponse(string Message);
 
+public record VerifyEmailRequest(string Token);
+
 public record VerifyEmailResponse(bool Verified, string Message);
 
-public record LoginResponse(string Token, UserProfileDto User);
+public record ForgotPasswordRequest(string Email);
+
+public record ForgotPasswordResponse(string Message);
+
+public record ResetPasswordRequest(string Token, string Password);
+
+public record ResetPasswordResponse(bool Success, string Message);
+
+public record LoginResponse(UserProfileDto User);

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ShoppingList.Api.Contracts;
+using ShoppingList.Api.Security;
 using ShoppingList.Domain.Enums;
 using ShoppingList.Infrastructure.Persistence;
 using ShoppingListEntity = ShoppingList.Domain.Entities.ShoppingList;
@@ -30,6 +31,7 @@ public class ListAccessService(ApplicationDbContext db)
         Guid userId,
         CancellationToken cancellationToken = default) =>
         await AccessibleLists(userId)
+            .Include(l => l.SharedPermissions)
             .AsNoTracking()
             .FirstOrDefaultAsync(l => l.Id == listId, cancellationToken);
 
@@ -50,8 +52,35 @@ public class ListAccessService(ApplicationDbContext db)
             ownerDisplayName);
     }
 
-    public static ActionResult? RequireEditable(ShoppingListEntity list)
+    public static bool CanEdit(ShoppingListEntity list, Guid userId) =>
+        list.OwnerId == userId
+        || list.SharedPermissions.Any(p =>
+            p.UserId == userId
+            && p.Status == ListShareStatus.Accepted
+            && p.PermissionLevel is PermissionLevel.Edit or PermissionLevel.Admin);
+
+    public static bool CanRename(ShoppingListEntity list, Guid userId) => CanEdit(list, userId);
+
+    public static ActionResult? RequireRenamable(ShoppingListEntity list, Guid userId)
     {
+        if (!CanRename(list, userId))
+        {
+            return new NotFoundObjectResult(new { error = ApiErrors.ListNotFound });
+        }
+
+        return null;
+    }
+
+    public static ActionResult? RequireEditable(ShoppingListEntity list, Guid userId)
+    {
+        if (!CanEdit(list, userId))
+        {
+            return new ObjectResult(new { error = "You do not have permission to edit this list." })
+            {
+                StatusCode = StatusCodes.Status403Forbidden,
+            };
+        }
+
         if (list.IsArchived)
         {
             return new BadRequestObjectResult(new

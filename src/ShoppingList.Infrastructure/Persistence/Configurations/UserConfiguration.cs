@@ -64,6 +64,13 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
             .IsUnique()
             .HasFilter("\"EmailVerificationToken\" IS NOT NULL");
 
+        builder.Property(u => u.PasswordResetToken)
+            .HasMaxLength(128);
+
+        builder.HasIndex(u => u.PasswordResetToken)
+            .IsUnique()
+            .HasFilter("\"PasswordResetToken\" IS NOT NULL");
+
         builder.HasMany(u => u.OwnedLists)
             .WithOne(l => l.Owner)
             .HasForeignKey(l => l.OwnerId)

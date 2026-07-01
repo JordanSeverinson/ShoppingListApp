@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ShoppingList.Api.Contracts;
+using ShoppingList.Api.Security;
 using ShoppingList.Api.Services;
 using ShoppingList.Application.Users;
 using ShoppingList.Infrastructure.Persistence;
@@ -14,8 +15,12 @@ namespace ShoppingList.Api.Controllers;
 public class UsersController(
     ApplicationDbContext db,
     CurrentUserService currentUser,
-    FriendCodeAllocationService friendCodes) : ControllerBase
+    FriendCodeAllocationService friendCodes,
+    EmailVerificationService emailVerification) : ControllerBase
 {
+    private static readonly HashSet<string> AllowedGenders =
+        new(StringComparer.OrdinalIgnoreCase) { "Male", "Female", "Non-binary" };
+
     [HttpGet("me")]
     [ProducesResponseType(typeof(UserProfileDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -56,19 +61,32 @@ public class UsersController(
             return NotFound(new { error = "User not found." });
         }
 
+        var emailChanged = false;
+
         if (!string.IsNullOrWhiteSpace(request.Email))
         {
-            var email = request.Email.Trim().ToLowerInvariant();
-            var emailTaken = await db.Users.AnyAsync(
-                u => u.Id != user.Id && u.Email.ToLower() == email,
-                cancellationToken);
-
-            if (emailTaken)
+            var emailError = RegistrationValidator.ValidateEmail(request.Email);
+            if (emailError is not null)
             {
-                return BadRequest(new { error = "That email is already in use." });
+                return BadRequest(new { error = emailError });
             }
 
-            user.Email = email;
+            var email = request.Email.Trim().ToLowerInvariant();
+            if (!string.Equals(email, user.Email, StringComparison.OrdinalIgnoreCase))
+            {
+                var emailTaken = await db.Users.AnyAsync(
+                    u => u.Id != user.Id && u.Email.ToLower() == email,
+                    cancellationToken);
+
+                if (emailTaken)
+                {
+                    return BadRequest(new { error = ApiErrors.ProfileUpdateFailed });
+                }
+
+                user.Email = email;
+                user.EmailVerified = false;
+                emailChanged = true;
+            }
         }
 
         if (request.PhoneNumber is not null)
@@ -79,6 +97,13 @@ public class UsersController(
 
             if (phone is not null)
             {
+                var phoneError = RegistrationValidator.ValidatePhone(phone);
+                if (phoneError is not null)
+                {
+                    return BadRequest(new { error = phoneError });
+                }
+
+                phone = RegistrationValidator.FormatPhone(phone);
                 var normalized = PhoneNormalizer.Normalize(phone);
                 var otherPhones = await db.Users
                     .Where(u => u.Id != user.Id && u.PhoneNumber != null)
@@ -87,7 +112,7 @@ public class UsersController(
 
                 if (otherPhones.Any(existing => PhoneNormalizer.Normalize(existing) == normalized))
                 {
-                    return BadRequest(new { error = "That phone number is already in use." });
+                    return BadRequest(new { error = ApiErrors.ProfileUpdateFailed });
                 }
             }
 
@@ -96,20 +121,50 @@ public class UsersController(
 
         if (request.PreferredName is not null)
         {
-            user.PreferredName = string.IsNullOrWhiteSpace(request.PreferredName)
+            var preferredName = string.IsNullOrWhiteSpace(request.PreferredName)
                 ? null
                 : request.PreferredName.Trim();
+
+            if (preferredName is not null)
+            {
+                var preferredNameError = RegistrationValidator.ValidatePreferredName(preferredName);
+                if (preferredNameError is not null)
+                {
+                    return BadRequest(new { error = preferredNameError });
+                }
+            }
+
+            user.PreferredName = preferredName;
         }
 
         if (request.Gender is not null)
         {
-            user.Gender = string.IsNullOrWhiteSpace(request.Gender)
+            var gender = string.IsNullOrWhiteSpace(request.Gender)
                 ? null
                 : request.Gender.Trim();
+
+            if (gender is not null)
+            {
+                var genderError = RegistrationValidator.ValidateGender(gender, AllowedGenders);
+                if (genderError is not null)
+                {
+                    return BadRequest(new { error = genderError });
+                }
+
+                gender = AllowedGenders.First(g =>
+                    string.Equals(g, gender, StringComparison.OrdinalIgnoreCase));
+            }
+
+            user.Gender = gender;
         }
 
         user.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
+
+        if (emailChanged)
+        {
+            await emailVerification.IssueVerificationEmailAsync(user, cancellationToken);
+        }
 
         await EnsureProfileDefaultsAsync(user, cancellationToken);
         return Ok(ToProfile(user));

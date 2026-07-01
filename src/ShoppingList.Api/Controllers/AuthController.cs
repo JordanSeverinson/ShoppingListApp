@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using ShoppingList.Api.Contracts;
+using ShoppingList.Api.Security;
 using ShoppingList.Api.Services;
 using ShoppingList.Application.Users;
 using ShoppingList.Domain.Entities;
@@ -11,18 +13,23 @@ namespace ShoppingList.Api.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-[AllowAnonymous]
 public class AuthController(
     ApplicationDbContext db,
     PasswordService passwords,
     JwtTokenService jwtTokens,
+    AuthCookieService authCookies,
     FriendCodeAllocationService friendCodes,
-    EmailVerificationService emailVerification) : ControllerBase
+    EmailVerificationService emailVerification,
+    PasswordResetService passwordReset,
+    JwtDenylistService jwtDenylist,
+    ILogger<AuthController> logger) : ControllerBase
 {
     private static readonly HashSet<string> AllowedGenders =
         new(StringComparer.OrdinalIgnoreCase) { "Male", "Female", "Non-binary" };
 
     [HttpPost("register")]
+    [AllowAnonymous]
+    [EnableRateLimiting("auth")]
     [ProducesResponseType(typeof(RegisterResponse), StatusCodes.Status200OK)]
     public async Task<ActionResult<RegisterResponse>> Register(
         [FromBody] RegisterRequest request,
@@ -59,7 +66,7 @@ public class AuthController(
 
         if (emailTaken)
         {
-            return BadRequest(new { error = "That email is already in use." });
+            return BadRequest(new { error = "Unable to create an account with these details." });
         }
 
         string? phone = null;
@@ -74,7 +81,7 @@ public class AuthController(
 
             if (phoneTaken.Any(existing => PhoneNormalizer.Normalize(existing) == normalized))
             {
-                return BadRequest(new { error = "That phone number is already in use." });
+                return BadRequest(new { error = "Unable to create an account with these details." });
             }
         }
 
@@ -82,9 +89,10 @@ public class AuthController(
         if (!string.IsNullOrWhiteSpace(request.Gender))
         {
             var trimmedGender = request.Gender.Trim();
-            if (!AllowedGenders.Contains(trimmedGender))
+            var genderError = RegistrationValidator.ValidateGender(trimmedGender, AllowedGenders);
+            if (genderError is not null)
             {
-                return BadRequest(new { error = "Select a valid gender option." });
+                return BadRequest(new { error = genderError });
             }
 
             gender = AllowedGenders.First(g =>
@@ -115,26 +123,27 @@ public class AuthController(
             "Account created. Check your email for a verification link before signing in."));
     }
 
-    [HttpGet("verify-email")]
+    [HttpPost("verify-email")]
+    [AllowAnonymous]
+    [EnableRateLimiting("auth")]
     [ProducesResponseType(typeof(VerifyEmailResponse), StatusCodes.Status200OK)]
-    public async Task<ActionResult<VerifyEmailResponse>> VerifyEmail(
-        [FromQuery] string token,
-        CancellationToken cancellationToken)
-    {
-        var verified = await emailVerification.VerifyAsync(token, cancellationToken);
-        if (!verified)
-        {
-            return BadRequest(new VerifyEmailResponse(
-                false,
-                "This verification link is invalid or has expired."));
-        }
+    public Task<ActionResult<VerifyEmailResponse>> VerifyEmailPost(
+        [FromBody] VerifyEmailRequest request,
+        CancellationToken cancellationToken) =>
+        VerifyEmailCore(request.Token, cancellationToken);
 
-        return Ok(new VerifyEmailResponse(
-            true,
-            "Your email has been verified. You can now sign in."));
-    }
+    [HttpGet("verify-email")]
+    [AllowAnonymous]
+    [EnableRateLimiting("auth")]
+    [ProducesResponseType(typeof(VerifyEmailResponse), StatusCodes.Status200OK)]
+    public Task<ActionResult<VerifyEmailResponse>> VerifyEmail(
+        [FromQuery] string token,
+        CancellationToken cancellationToken) =>
+        VerifyEmailCore(token, cancellationToken);
 
     [HttpPost("login")]
+    [AllowAnonymous]
+    [EnableRateLimiting("auth")]
     [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
     public async Task<ActionResult<LoginResponse>> Login(
         [FromBody] LoginRequest request,
@@ -150,20 +159,98 @@ public class AuthController(
             u => u.Email.ToLower() == email,
             cancellationToken);
 
-        if (user is null || !passwords.Verify(user.PasswordHash, request.Password))
+        var passwordValid = user is not null && passwords.Verify(user.PasswordHash, request.Password);
+        var canSignIn = passwordValid && user!.EmailVerified;
+
+        if (!canSignIn)
         {
+            logger.LogWarning("Failed login attempt for {Email}", email);
             return Unauthorized(new { error = "Invalid email or password." });
         }
 
-        if (!user.EmailVerified)
+        var profile = UsersController.ToProfile(user!);
+        var token = jwtTokens.CreateToken(user!);
+        authCookies.SetAuthCookie(Response, token);
+        return Ok(new LoginResponse(profile));
+    }
+
+    [HttpPost("logout")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public IActionResult Logout()
+    {
+        if (Request.Cookies.TryGetValue(AuthConstants.CookieName, out var token))
         {
-            return StatusCode(
-                StatusCodes.Status403Forbidden,
-                new { error = "Verify your email before signing in.", code = "email_not_verified" });
+            jwtDenylist.Revoke(token);
         }
 
-        var profile = UsersController.ToProfile(user);
-        var token = jwtTokens.CreateToken(user);
-        return Ok(new LoginResponse(token, profile));
+        authCookies.ClearAuthCookie(Response);
+        return NoContent();
+    }
+
+    private async Task<ActionResult<VerifyEmailResponse>> VerifyEmailCore(
+        string? token,
+        CancellationToken cancellationToken)
+    {
+        var verified = await emailVerification.VerifyAsync(token ?? string.Empty, cancellationToken);
+        if (!verified)
+        {
+            return BadRequest(new VerifyEmailResponse(
+                false,
+                "This verification link is invalid or has expired."));
+        }
+
+        return Ok(new VerifyEmailResponse(
+            true,
+            "Your email has been verified. You can now sign in."));
+    }
+
+    [HttpPost("forgot-password")]
+    [AllowAnonymous]
+    [EnableRateLimiting("auth")]
+    [ProducesResponseType(typeof(ForgotPasswordResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ForgotPasswordResponse>> ForgotPassword(
+        [FromBody] ForgotPasswordRequest request,
+        CancellationToken cancellationToken)
+    {
+        var emailError = RegistrationValidator.ValidateEmail(request.Email);
+        if (emailError is not null)
+        {
+            return BadRequest(new { error = emailError });
+        }
+
+        await passwordReset.RequestResetAsync(request.Email, cancellationToken);
+        return Ok(new ForgotPasswordResponse(PasswordResetService.ForgotPasswordMessage));
+    }
+
+    [HttpPost("reset-password")]
+    [AllowAnonymous]
+    [EnableRateLimiting("auth")]
+    [ProducesResponseType(typeof(ResetPasswordResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResetPasswordResponse>> ResetPassword(
+        [FromBody] ResetPasswordRequest request,
+        CancellationToken cancellationToken)
+    {
+        var passwordError = RegistrationValidator.ValidatePassword(request.Password);
+        if (passwordError is not null)
+        {
+            return BadRequest(new { error = passwordError });
+        }
+
+        var success = await passwordReset.ResetPasswordAsync(
+            request.Token,
+            request.Password,
+            cancellationToken);
+
+        if (!success)
+        {
+            return BadRequest(new ResetPasswordResponse(
+                false,
+                "This reset link is invalid or has expired."));
+        }
+
+        return Ok(new ResetPasswordResponse(
+            true,
+            "Your password has been reset. You can now sign in."));
     }
 }

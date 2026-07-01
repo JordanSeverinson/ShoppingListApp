@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using ShoppingList.Application.Hubs;
+using ShoppingList.Api.Services;
 
 namespace ShoppingList.Api.Hubs;
 
@@ -10,12 +11,21 @@ namespace ShoppingList.Api.Hubs;
 /// ItemAdded, ItemUpdated, ItemToggled, ItemDeleted, ItemsBulkAdded, ItemsBulkDeleted.
 /// </summary>
 [Authorize]
-public class ShoppingListHub : Hub
+public class ShoppingListHub(
+    ListAccessService listAccess,
+    CurrentUserService currentUser) : Hub
 {
     public static string GroupName(Guid listId) => $"list:{listId}";
 
     public async Task JoinList(Guid listId)
     {
+        var userId = currentUser.GetUserId();
+        var list = await listAccess.GetAccessibleListMetadataAsync(listId, userId, Context.ConnectionAborted);
+        if (list is null)
+        {
+            throw new HubException("Access denied.");
+        }
+
         await Groups.AddToGroupAsync(Context.ConnectionId, GroupName(listId));
     }
 
