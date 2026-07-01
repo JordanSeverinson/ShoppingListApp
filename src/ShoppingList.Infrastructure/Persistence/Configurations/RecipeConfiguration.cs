@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using ShoppingList.Application.Recipes;
 using ShoppingList.Domain.Entities;
 
 namespace ShoppingList.Infrastructure.Persistence.Configurations;
@@ -16,18 +17,22 @@ public class RecipeConfiguration : IEntityTypeConfiguration<Recipe>
             .IsRequired()
             .HasMaxLength(200);
 
-        builder.Property(r => r.ShareCode)
-            .IsRequired()
-            .HasMaxLength(11);
-
-        builder.HasIndex(r => r.ShareCode)
-            .IsUnique();
-
         builder.HasIndex(r => r.OwnerId);
+
+        builder.Property(r => r.Content)
+            .HasColumnType("jsonb")
+            .HasConversion(
+                v => RecipeContentSerializer.Serialize(v),
+                v => RecipeContentSerializer.Deserialize(v));
 
         builder.HasMany(r => r.Ingredients)
             .WithOne(i => i.Recipe)
             .HasForeignKey(i => i.RecipeId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasMany(r => r.Steps)
+            .WithOne(s => s.Recipe)
+            .HasForeignKey(s => s.RecipeId)
             .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasMany(r => r.SharedPermissions)

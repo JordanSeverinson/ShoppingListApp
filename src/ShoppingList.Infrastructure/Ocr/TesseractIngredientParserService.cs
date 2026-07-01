@@ -17,12 +17,24 @@ public sealed class TesseractIngredientParserService(
     IOptions<TesseractOptions> options,
     ILogger<TesseractIngredientParserService> logger) : IIngredientParserService
 {
-    public Task<IReadOnlyList<ParsedIngredientDto>> ParseFromStreamAsync(
-        Stream imageStream,
-        CancellationToken cancellationToken = default) =>
-        Task.Run(() => ParseImageBytes(ReadAllBytes(imageStream), cancellationToken), cancellationToken);
+    private static readonly PageSegMode[] SegmentationModes =
+    [
+        PageSegMode.Auto,
+        PageSegMode.SingleColumn,
+        PageSegMode.SingleBlock,
+        PageSegMode.SparseText
+    ];
 
-    private IReadOnlyList<ParsedIngredientDto> ParseImageBytes(byte[] imageBytes, CancellationToken cancellationToken)
+    public Task<ParsedRecipeContentDto> ParseFromStreamAsync(
+        Stream imageStream,
+        RecipeImageImportMode importMode = RecipeImageImportMode.FullRecipeWithSteps,
+        CancellationToken cancellationToken = default) =>
+        Task.Run(() => ParseImageBytes(ReadAllBytes(imageStream), importMode, cancellationToken), cancellationToken);
+
+    private ParsedRecipeContentDto ParseImageBytes(
+        byte[] imageBytes,
+        RecipeImageImportMode importMode,
+        CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -36,12 +48,35 @@ public sealed class TesseractIngredientParserService(
 
             using var pix = Pix.LoadFromMemory(imageBytes);
             using var prepared = PrepareImage(pix);
-            using var page = engine.Process(prepared, PageSegMode.SparseText);
-            var text = page.GetText();
 
-            logger.LogDebug("OCR extracted {Length} characters from {DataPath}", text?.Length ?? 0, dataPath);
+            ParsedRecipeContentDto? best = null;
+            string? bestText = null;
+            PageSegMode? bestMode = null;
 
-            return IngredientLineParser.Parse(text ?? string.Empty);
+            foreach (var mode in SegmentationModes)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                using var page = engine.Process(prepared, mode);
+                var text = page.GetText() ?? string.Empty;
+                var parsed = IngredientLineParser.ParseRecipeContent(text, importMode);
+
+                if (IsBetterOcrResult(parsed, best, importMode))
+                {
+                    best = parsed;
+                    bestText = text;
+                    bestMode = mode;
+                }
+            }
+
+            logger.LogDebug(
+                "OCR selected {Mode} with {IngredientCount} ingredients and {StepCount} steps ({Length} chars)",
+                bestMode,
+                best?.Ingredients.Count ?? 0,
+                best?.Steps.Count ?? 0,
+                bestText?.Length ?? 0);
+
+            return best ?? new ParsedRecipeContentDto([], []);
         }
         catch (Exception ex)
         {
@@ -50,19 +85,42 @@ public sealed class TesseractIngredientParserService(
                 "OCR processing failed. Check that Tesseract native libraries are available and the image is a supported format.",
                 ex);
         }
+    }
 
+    private static bool IsBetterOcrResult(
+        ParsedRecipeContentDto candidate,
+        ParsedRecipeContentDto? current,
+        RecipeImageImportMode importMode)
+    {
+        if (current is null)
+        {
+            return true;
+        }
+
+        return importMode switch
+        {
+            RecipeImageImportMode.IngredientsOnly =>
+                candidate.Ingredients.Count > current.Ingredients.Count,
+            RecipeImageImportMode.CookingStepsOnly =>
+                candidate.Steps.Count > current.Steps.Count,
+            _ =>
+                candidate.Ingredients.Count > current.Ingredients.Count
+                || (candidate.Ingredients.Count == current.Ingredients.Count
+                    && candidate.Steps.Count > current.Steps.Count)
+        };
     }
 
     private static Pix PrepareImage(Pix source)
     {
-        const int minWidth = 900;
-        if (source.Width >= minWidth)
+        using var gray = source.Depth == 8 ? source.Clone() : source.ConvertRGBToGray();
+
+        const int minWidth = 1400;
+        if (gray.Width >= minWidth)
         {
-            return source.Clone();
+            return gray.Clone();
         }
 
-        var scale = (float)minWidth / source.Width;
-        return source.Scale(scale, scale);
+        return gray.Scale((float)minWidth / gray.Width, (float)minWidth / gray.Width);
     }
 
     private static byte[] ReadAllBytes(Stream stream)

@@ -15,14 +15,14 @@ namespace ShoppingList.Api.Controllers;
 
 [ApiController]
 [Route("api/lists")]
-[AllowAnonymous]
+[Authorize]
 public class ListsController(
     ApplicationDbContext db,
     IHubContext<ShoppingListHub> hubContext,
     CurrentUserService currentUser,
     ListAccessService listAccess,
-    RecipeAccessService recipeAccess,
-    ShareCodeAllocationService shareCodes) : ControllerBase
+    ListSharingService listSharing,
+    RecipeAccessService recipeAccess) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType(typeof(ListSummaryResponse), StatusCodes.Status200OK)]
@@ -33,10 +33,12 @@ public class ListsController(
         var lists = await listAccess.AccessibleLists(userId)
             .AsNoTracking()
             .Include(l => l.Items)
+            .Include(l => l.Owner)
+            .Include(l => l.SharedPermissions)
             .OrderByDescending(l => l.UpdatedAt ?? l.CreatedAt)
             .ToListAsync(cancellationToken);
 
-        var shared = lists
+        var active = lists
             .Where(l => !l.IsArchived)
             .Select(l => ListAccessService.ToSummary(l, userId))
             .ToList();
@@ -46,7 +48,9 @@ public class ListsController(
             .Select(l => ListAccessService.ToSummary(l, userId))
             .ToList();
 
-        return Ok(new ListSummaryResponse(shared, archived));
+        var pendingShares = await listSharing.GetPendingInvitationsAsync(userId, cancellationToken);
+
+        return Ok(new ListSummaryResponse(active, archived, pendingShares));
     }
 
     [HttpPost]
@@ -63,7 +67,6 @@ public class ListsController(
             Id = Guid.NewGuid(),
             Name = name,
             OwnerId = userId,
-            ShareCode = await shareCodes.AllocateUniqueShareCodeAsync(cancellationToken),
             CreatedAt = DateTime.UtcNow
         };
 
@@ -73,53 +76,81 @@ public class ListsController(
         return CreatedAtAction(nameof(GetList), new { listId = list.Id }, ListAccessService.ToSummary(list, userId));
     }
 
-    [HttpPost("join")]
-    [ProducesResponseType(typeof(ListSummaryDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<ListSummaryDto>> JoinList(
-        [FromBody] JoinListRequest request,
+    [HttpPost("{listId:guid}/shares")]
+    [ProducesResponseType(typeof(ShareListResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ShareListResponse>> ShareList(
+        Guid listId,
+        [FromBody] ShareListRequest request,
         CancellationToken cancellationToken)
     {
-        var userId = currentUser.GetUserId();
-        var code = request.ShareCode?.Trim().ToUpperInvariant() ?? string.Empty;
-
-        if (code.Length != 11)
+        try
         {
-            return BadRequest(new { error = "Share code must be exactly 11 characters." });
+            var userId = currentUser.GetUserId();
+            var result = await listSharing.ShareWithFriendsAsync(
+                listId,
+                userId,
+                request.FriendUserIds ?? [],
+                cancellationToken);
+            return Ok(result);
         }
-
-        var list = await db.ShoppingLists
-            .Include(l => l.Items)
-            .FirstOrDefaultAsync(l => l.ShareCode == code, cancellationToken);
-
-        if (list is null)
+        catch (InvalidOperationException ex)
         {
-            return NotFound(new { error = "No list found for that share code." });
+            return BadRequest(new { error = ex.Message });
         }
+    }
 
-        if (list.OwnerId == userId)
+    [HttpPost("shares/{permissionId:guid}/accept")]
+    [ProducesResponseType(typeof(ListSummaryDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ListSummaryDto>> AcceptShare(
+        Guid permissionId,
+        CancellationToken cancellationToken)
+    {
+        try
         {
-            return Ok(ListAccessService.ToSummary(list, userId));
+            var userId = currentUser.GetUserId();
+            var summary = await listSharing.AcceptShareAsync(permissionId, userId, cancellationToken);
+            return Ok(summary);
         }
-
-        var alreadyJoined = await db.SharedPermissions
-            .AnyAsync(p => p.UserId == userId && p.ShoppingListId == list.Id, cancellationToken);
-
-        if (!alreadyJoined)
+        catch (InvalidOperationException ex)
         {
-            db.SharedPermissions.Add(new SharedPermission
-            {
-                Id = Guid.NewGuid(),
-                UserId = userId,
-                ShoppingListId = list.Id,
-                PermissionLevel = PermissionLevel.Edit,
-                GrantedAt = DateTime.UtcNow,
-                CreatedAt = DateTime.UtcNow
-            });
-            await db.SaveChangesAsync(cancellationToken);
+            return BadRequest(new { error = ex.Message });
         }
+    }
 
-        return Ok(ListAccessService.ToSummary(list, userId));
+    [HttpPost("shares/{permissionId:guid}/decline")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> DeclineShare(
+        Guid permissionId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var userId = currentUser.GetUserId();
+            await listSharing.DeclineShareAsync(permissionId, userId, cancellationToken);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("{listId:guid}/leave")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> LeaveList(
+        Guid listId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var userId = currentUser.GetUserId();
+            await listSharing.LeaveListAsync(listId, userId, cancellationToken);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 
     [HttpGet("{listId:guid}")]
@@ -144,8 +175,8 @@ public class ListsController(
         return Ok(new ListDetailResponse(
             list.Id,
             list.Name,
-            list.ShareCode,
             list.IsArchived,
+            list.OwnerId == userId,
             CanEdit: !list.IsArchived,
             items));
     }
@@ -197,12 +228,42 @@ public class ListsController(
             return BadRequest(new { error = "List is already archived." });
         }
 
+        if (list.OwnerId != userId)
+        {
+            return BadRequest(new { error = "Only the list owner can archive this list." });
+        }
+
         list.IsArchived = true;
         list.ArchivedAt = DateTime.UtcNow;
         list.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
 
         return Ok(ListAccessService.ToSummary(list, userId));
+    }
+
+    [HttpDelete("{listId:guid}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DeleteList(Guid listId, CancellationToken cancellationToken)
+    {
+        var userId = currentUser.GetUserId();
+        var list = await db.ShoppingLists
+            .FirstOrDefaultAsync(l => l.Id == listId, cancellationToken);
+
+        if (list is null)
+        {
+            return NotFound(new { error = "List not found." });
+        }
+
+        if (list.OwnerId != userId)
+        {
+            return BadRequest(new { error = "Only the list owner can delete this list." });
+        }
+
+        db.ShoppingLists.Remove(list);
+        await db.SaveChangesAsync(cancellationToken);
+
+        return NoContent();
     }
 
     [HttpPost("{listId:guid}/items")]

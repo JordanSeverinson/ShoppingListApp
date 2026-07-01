@@ -6,4 +6,5 @@ public record RecipeIngredientDto(
     string Name,
     string? Quantity,
     string Category,
+    string? Section,
     int SortOrder);

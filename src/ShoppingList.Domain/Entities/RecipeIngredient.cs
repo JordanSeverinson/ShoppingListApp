@@ -8,6 +8,7 @@ public class RecipeIngredient : AuditableEntity
     public string Name { get; set; } = string.Empty;
     public string? Quantity { get; set; }
     public string Category { get; set; } = "Other";
+    public string? Section { get; set; }
     public int SortOrder { get; set; }
 
     public Recipe Recipe { get; set; } = null!;

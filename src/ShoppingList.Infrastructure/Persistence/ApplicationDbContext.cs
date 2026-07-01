@@ -12,7 +12,9 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<SharedPermission> SharedPermissions => Set<SharedPermission>();
     public DbSet<Recipe> Recipes => Set<Recipe>();
     public DbSet<RecipeIngredient> RecipeIngredients => Set<RecipeIngredient>();
+    public DbSet<RecipeStep> RecipeSteps => Set<RecipeStep>();
     public DbSet<RecipeSharedPermission> RecipeSharedPermissions => Set<RecipeSharedPermission>();
+    public DbSet<Friendship> Friendships => Set<Friendship>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

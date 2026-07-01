@@ -4,6 +4,7 @@ import {
   HubConnectionState,
   LogLevel,
 } from "@microsoft/signalr";
+import { getAuthToken } from "./authStorage";
 
 const HUB_PATH = "/hubs/shopping-list";
 
@@ -15,8 +16,12 @@ export type ConnectionStatus =
 
 export function createListHubConnection(): HubConnection {
   const base = import.meta.env.VITE_API_URL ?? "";
+  const token = getAuthToken();
+
   return new HubConnectionBuilder()
-    .withUrl(`${base}${HUB_PATH}`)
+    .withUrl(`${base}${HUB_PATH}`, {
+      accessTokenFactory: () => token ?? "",
+    })
     .withAutomaticReconnect([0, 2000, 5000, 10000, 30000])
     .configureLogging(
       import.meta.env.DEV ? LogLevel.Information : LogLevel.Warning,

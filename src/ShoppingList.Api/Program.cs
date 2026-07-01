@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using ShoppingList.Application.Recipes;
 using ShoppingList.Api.Hubs;
 using ShoppingList.Api.Persistence;
 using ShoppingList.Api.Services;
@@ -27,11 +28,12 @@ builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        options.JsonSerializerOptions.Converters.Add(new RecipeContentRootJsonConverter());
     });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
-    options.SwaggerDoc("v1", new OpenApiInfo { Title = "Shopping List API", Version = "v1" });
+    options.SwaggerDoc("v1", new OpenApiInfo { Title = "Cook With Me API", Version = "v1" });
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Description = "JWT Authorization header using the Bearer scheme.",
@@ -56,9 +58,16 @@ builder.Services.AddSwaggerGen(options =>
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<CurrentUserService>();
+builder.Services.AddScoped<PasswordService>();
+builder.Services.AddScoped<JwtTokenService>();
 builder.Services.AddScoped<ListAccessService>();
 builder.Services.AddScoped<RecipeAccessService>();
-builder.Services.AddScoped<ShareCodeAllocationService>();
+builder.Services.AddScoped<RecipeSharingService>();
+builder.Services.AddScoped<ListSharingService>();
+builder.Services.AddScoped<FriendCodeAllocationService>();
+builder.Services.AddScoped<FriendsService>();
+builder.Services.AddScoped<EmailVerificationService>();
+builder.Services.AddSingleton<IEmailSender, DevelopmentEmailSender>();
 
 builder.Services.AddSignalR();
 
@@ -67,6 +76,7 @@ var jwtKey = jwtSection["Key"] ?? throw new InvalidOperationException("Jwt:Key i
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
+        options.MapInboundClaims = false;
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
@@ -120,7 +130,7 @@ if (app.Environment.IsDevelopment())
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>()
         .CreateLogger("DatabaseInitializer");
-    await DatabaseInitializer.MigrateAndSeedAsync(db, logger);
+    await DatabaseInitializer.MigrateAsync(db, logger);
 }
 
 app.UseHttpsRedirection();

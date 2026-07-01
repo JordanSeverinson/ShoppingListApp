@@ -1,40 +1,232 @@
+export interface RecipeSubCategoryBlock {
+  description: string;
+  ingredients: string[];
+}
+
+export interface RecipeContentRoot {
+  cookingSteps: string[];
+  [key: string]: RecipeSubCategoryBlock | string[] | undefined;
+}
+
+export interface RecipeContentDocument {
+  recipe: RecipeContentRoot;
+}
+
+export function getRecipeSubCategories(
+  content: RecipeContentDocument | null | undefined,
+): RecipeSubCategoryBlock[] {
+  if (!content?.recipe) {
+    return [];
+  }
+
+  const recipe = content.recipe as RecipeContentRoot & {
+    subCategories?: RecipeSubCategoryBlock[];
+  };
+
+  if (Array.isArray(recipe.subCategories) && recipe.subCategories.length > 0) {
+    return recipe.subCategories;
+  }
+
+  return Object.entries(recipe)
+    .filter(([key, value]) => key.startsWith("subCategory") && isSubCategoryBlock(value))
+    .sort(([left], [right]) => subCategorySortKey(left) - subCategorySortKey(right))
+    .map(([, value]) => value as RecipeSubCategoryBlock);
+}
+
+function subCategorySortKey(key: string): number {
+  const match = /subCategory(\d+)/i.exec(key);
+  return match ? Number.parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER;
+}
+
+function normalizeSubCategoriesForDisplay(
+  blocks: RecipeSubCategoryBlock[],
+): RecipeSubCategoryBlock[] {
+  if (blocks.length <= 1) {
+    if (blocks.length === 0) {
+      return [];
+    }
+
+    return [
+      {
+        description: "Ingredients",
+        ingredients: blocks[0].ingredients,
+      },
+    ];
+  }
+
+  return blocks;
+}
+
+function isSubCategoryBlock(value: unknown): value is RecipeSubCategoryBlock {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "description" in value &&
+    "ingredients" in value &&
+    Array.isArray((value as RecipeSubCategoryBlock).ingredients)
+  );
+}
+
+export function formatIngredientLine(ingredient: RecipeIngredient): string {
+  const name = ingredient.name.trim();
+  const quantity = ingredient.quantity?.trim();
+  return quantity ? `${quantity} ${name}` : name;
+}
+
+function buildSubCategoriesFromIngredients(
+  ingredients: RecipeIngredient[],
+): RecipeSubCategoryBlock[] {
+  if (ingredients.length === 0) {
+    return [];
+  }
+
+  const groups = new Map<string, string[]>();
+  const sectionOrder: string[] = [];
+
+  for (const ingredient of [...ingredients].sort(
+    (a, b) =>
+      (a.section ?? "").localeCompare(b.section ?? "") || a.sortOrder - b.sortOrder,
+  )) {
+    const label = ingredient.section?.trim() || "Ingredients";
+    if (!groups.has(label)) {
+      groups.set(label, []);
+      sectionOrder.push(label);
+    }
+    groups.get(label)!.push(formatIngredientLine(ingredient));
+  }
+
+  return sectionOrder.map((description) => ({
+    description,
+    ingredients: groups.get(description)!,
+  }));
+}
+
+function inferSectionGroupsFromIngredients(
+  ingredients: RecipeIngredient[],
+): RecipeIngredient[] {
+  if (ingredients.some((ingredient) => ingredient.section?.trim())) {
+    return ingredients;
+  }
+
+  const glazeStart = ingredients.findIndex((ingredient) => {
+    const text = formatIngredientLine(ingredient).toLowerCase();
+    return (
+      text.includes("confectioners") ||
+      text.includes("confectioner's") ||
+      text.includes("powdered sugar") ||
+      text.includes("icing sugar")
+    );
+  });
+
+  if (glazeStart <= 0 || glazeStart >= ingredients.length - 1) {
+    return ingredients;
+  }
+
+  return ingredients.map((ingredient, index) => ({
+    ...ingredient,
+    section: index < glazeStart ? "Cake" : "Glaze",
+  }));
+}
+
+export function resolveRecipeDisplayData(
+  content: RecipeContentDocument | null | undefined,
+  ingredients: RecipeIngredient[],
+  steps: string[],
+): { subCategories: RecipeSubCategoryBlock[]; cookingSteps: string[]; hasMultipleSubsections: boolean } {
+  const cookingSteps =
+    steps.length > 0 ? steps : (content?.recipe.cookingSteps ?? []);
+
+  const fromContent = getRecipeSubCategories(content);
+  const fromIngredients = buildSubCategoriesFromIngredients(
+    inferSectionGroupsFromIngredients(ingredients),
+  );
+
+  let rawBlocks: RecipeSubCategoryBlock[];
+  if (fromContent.length > 1) {
+    rawBlocks = fromContent;
+  } else if (fromIngredients.length > 1) {
+    rawBlocks = fromIngredients;
+  } else if (fromContent.length === 1) {
+    rawBlocks = fromContent;
+  } else {
+    rawBlocks = fromIngredients;
+  }
+
+  return {
+    subCategories:
+      rawBlocks.length <= 1
+        ? normalizeSubCategoriesForDisplay(rawBlocks)
+        : rawBlocks,
+    cookingSteps,
+    hasMultipleSubsections: rawBlocks.length > 1,
+  };
+}
+
 export interface RecipeIngredient {
   id: string;
   recipeId: string;
   name: string;
   quantity: string | null;
   category: string;
+  section: string | null;
+  sortOrder: number;
+}
+
+export interface RecipeStep {
+  id: string;
+  recipeId: string;
+  text: string;
   sortOrder: number;
 }
 
 export interface RecipeSummary {
   id: string;
   name: string;
-  shareCode: string;
   isOwner: boolean;
+  ingredientCount: number;
+  updatedAt?: string;
+}
+
+export interface PendingRecipeShare {
+  id: string;
+  recipeId: string;
+  recipeName: string;
+  invitedByName: string;
+  invitedByUserId: string;
   ingredientCount: number;
 }
 
 export interface RecipeSummaryResponse {
   recipes: RecipeSummary[];
+  pendingShares: PendingRecipeShare[];
 }
 
 export interface RecipeDetail {
   id: string;
   name: string;
-  shareCode: string;
+  isOwner: boolean;
+  content: RecipeContentDocument;
   ingredients: RecipeIngredient[];
+  steps: RecipeStep[];
 }
 
 export interface CreateRecipeIngredientPayload {
   name: string;
   quantity?: string | null;
   category: string;
+  section?: string | null;
 }
+
+export type RecipeImageImportMode =
+  | "FullRecipeWithSteps"
+  | "IngredientsOnly"
+  | "CookingStepsOnly";
 
 export interface UploadRecipeImageResponse {
   recipeId: string;
+  content: RecipeContentDocument;
   ingredients: RecipeIngredient[];
+  steps: RecipeStep[];
   message: string;
 }
 

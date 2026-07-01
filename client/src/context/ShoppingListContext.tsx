@@ -20,7 +20,7 @@ import type { CreateItemPayload, ListDetail, ListItem } from "../types/list";
 interface ShoppingListContextValue {
   listId: string;
   listName: string;
-  shareCode: string;
+  isOwner: boolean;
   isArchived: boolean;
   canEdit: boolean;
   items: ListItem[];
@@ -350,7 +350,7 @@ export function ShoppingListProvider({
     () => ({
       listId,
       listName: detail?.name ?? "Shopping List",
-      shareCode: detail?.shareCode ?? "",
+      isOwner: detail?.isOwner ?? false,
       isArchived,
       canEdit,
       items: detail?.items ?? [],

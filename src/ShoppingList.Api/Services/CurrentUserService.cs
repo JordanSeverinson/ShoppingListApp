@@ -1,21 +1,26 @@
-using ShoppingList.Api.Persistence;
-
-namespace ShoppingList.Api.Services;
-
-/// <summary>
-/// Resolves the active user until full authentication is implemented.
-/// </summary>
-public class CurrentUserService(IHttpContextAccessor httpContextAccessor)
-{
-    public Guid GetUserId()
-    {
-        var context = httpContextAccessor.HttpContext;
-        if (context?.Request.Headers.TryGetValue("X-User-Id", out var header) == true
-            && Guid.TryParse(header.ToString(), out var fromHeader))
-        {
-            return fromHeader;
-        }
-
-        return DevelopmentDataSeeder.DemoUserId;
-    }
-}
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+
+namespace ShoppingList.Api.Services;
+
+public class CurrentUserService(IHttpContextAccessor httpContextAccessor)
+{
+    public Guid? TryGetUserId()
+    {
+        var context = httpContextAccessor.HttpContext;
+        if (context?.User.Identity?.IsAuthenticated != true)
+        {
+            return null;
+        }
+
+        var subject = context.User.FindFirstValue(JwtRegisteredClaimNames.Sub)
+            ?? context.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        return Guid.TryParse(subject, out var userId) ? userId : null;
+    }
+
+    public Guid GetUserId() =>
+        TryGetUserId()
+        ?? throw new UnauthorizedAccessException("Authentication required.");
+}
+

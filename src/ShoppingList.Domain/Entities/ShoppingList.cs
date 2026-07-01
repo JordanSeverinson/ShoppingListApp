@@ -6,7 +6,6 @@ public class ShoppingList : AuditableEntity
 {
     public string Name { get; set; } = string.Empty;
     public Guid OwnerId { get; set; }
-    public string ShareCode { get; set; } = string.Empty;
     public bool IsArchived { get; set; }
     public DateTime? ArchivedAt { get; set; }
 

@@ -23,6 +23,9 @@ public class RecipeIngredientConfiguration : IEntityTypeConfiguration<RecipeIngr
             .IsRequired()
             .HasMaxLength(50);
 
+        builder.Property(i => i.Section)
+            .HasMaxLength(100);
+
         builder.HasIndex(i => new { i.RecipeId, i.SortOrder });
     }
 }

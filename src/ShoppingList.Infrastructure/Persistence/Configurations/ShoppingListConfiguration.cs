@@ -16,13 +16,6 @@ public class ShoppingListConfiguration : IEntityTypeConfiguration<ShoppingListEn
             .IsRequired()
             .HasMaxLength(200);
 
-        builder.Property(l => l.ShareCode)
-            .IsRequired()
-            .HasMaxLength(11);
-
-        builder.HasIndex(l => l.ShareCode)
-            .IsUnique();
-
         builder.HasIndex(l => l.OwnerId);
 
         builder.HasIndex(l => new { l.OwnerId, l.IsArchived });

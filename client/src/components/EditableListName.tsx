@@ -5,10 +5,12 @@ export function EditableListName({
   name,
   onSave,
   size = "lg",
+  readOnly = false,
 }: {
   name: string;
   onSave: (name: string) => Promise<void>;
   size?: "lg" | "sm";
+  readOnly?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(name);
@@ -33,6 +35,20 @@ export function EditableListName({
     } finally {
       setSaving(false);
     }
+  }
+
+  if (readOnly) {
+    return (
+      <h1
+        className={
+          size === "lg"
+            ? "text-2xl font-bold tracking-tight text-ink sm:text-3xl"
+            : "text-lg font-semibold text-ink"
+        }
+      >
+        {name}
+      </h1>
+    );
   }
 
   if (editing) {

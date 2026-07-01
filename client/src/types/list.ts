@@ -11,24 +11,61 @@ export interface ListItem {
 export interface ListSummary {
   id: string;
   name: string;
-  shareCode: string;
   isArchived: boolean;
+  isOwner: boolean;
   itemCount: number;
   checkedCount: number;
+  acceptedShareCount: number;
+  ownerDisplayName: string;
+}
+
+export function getListOwnershipLabel(list: ListSummary): string {
+  if (list.isOwner) {
+    if (list.acceptedShareCount === 0) {
+      return "Your List";
+    }
+
+    if (list.acceptedShareCount === 1) {
+      return "Your List (Shared with 1 Person)";
+    }
+
+    return `Your List (Shared with ${list.acceptedShareCount} People)`;
+  }
+
+  const ownerName = list.ownerDisplayName.trim();
+  return ownerName ? `${ownerName}'s List` : "Shared List";
+}
+
+export interface PendingListShare {
+  id: string;
+  listId: string;
+  listName: string;
+  invitedByName: string;
+  invitedByUserId: string;
+  itemCount: number;
+  checkedCount: number;
+  isArchived: boolean;
 }
 
 export interface ListSummaryResponse {
-  sharedLists: ListSummary[];
+  activeLists: ListSummary[];
   archivedLists: ListSummary[];
+  pendingShares: PendingListShare[];
 }
 
 export interface ListDetail {
   id: string;
   name: string;
-  shareCode: string;
   isArchived: boolean;
+  isOwner: boolean;
   canEdit: boolean;
   items: ListItem[];
+}
+
+export interface ShareListResponse {
+  invitedCount: number;
+  skippedCount: number;
+  message: string;
 }
 
 export interface CreateItemPayload {

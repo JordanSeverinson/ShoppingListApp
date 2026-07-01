@@ -9,7 +9,7 @@ namespace ShoppingList.Api.Hubs;
 /// Clients join a list group via <see cref="JoinList"/> and receive:
 /// ItemAdded, ItemUpdated, ItemToggled, ItemDeleted, ItemsBulkAdded, ItemsBulkDeleted.
 /// </summary>
-[AllowAnonymous]
+[Authorize]
 public class ShoppingListHub : Hub
 {
     public static string GroupName(Guid listId) => $"list:{listId}";

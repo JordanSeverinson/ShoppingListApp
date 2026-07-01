@@ -26,6 +26,44 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(u => u.DisplayName)
             .HasMaxLength(128);
 
+        builder.Property(u => u.FirstName)
+            .IsRequired()
+            .HasMaxLength(64);
+
+        builder.Property(u => u.PreferredName)
+            .HasMaxLength(64);
+
+        builder.Property(u => u.Gender)
+            .HasMaxLength(32);
+
+        builder.Property(u => u.LastName)
+            .HasMaxLength(64);
+
+        builder.Property(u => u.PhoneNumber)
+            .HasMaxLength(32);
+
+        builder.HasIndex(u => u.PhoneNumber)
+            .IsUnique()
+            .HasFilter("\"PhoneNumber\" IS NOT NULL");
+
+        builder.Property(u => u.FriendCode)
+            .IsRequired()
+            .HasMaxLength(8);
+
+        builder.HasIndex(u => u.FriendCode)
+            .IsUnique();
+
+        builder.Property(u => u.EmailVerified)
+            .IsRequired()
+            .HasDefaultValue(false);
+
+        builder.Property(u => u.EmailVerificationToken)
+            .HasMaxLength(128);
+
+        builder.HasIndex(u => u.EmailVerificationToken)
+            .IsUnique()
+            .HasFilter("\"EmailVerificationToken\" IS NOT NULL");
+
         builder.HasMany(u => u.OwnedLists)
             .WithOne(l => l.Owner)
             .HasForeignKey(l => l.OwnerId)

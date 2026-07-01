@@ -70,6 +70,10 @@ namespace ShoppingList.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -81,20 +85,12 @@ namespace ShoppingList.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("uuid");
 
-                    b.Property<string>("ShareCode")
-                        .IsRequired()
-                        .HasMaxLength(11)
-                        .HasColumnType("character varying(11)");
-
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 
                     b.HasIndex("OwnerId");
-
-                    b.HasIndex("ShareCode")
-                        .IsUnique();
 
                     b.ToTable("recipes", (string)null);
                 });
@@ -125,6 +121,10 @@ namespace ShoppingList.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("RecipeId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Section")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<int>("SortOrder")
                         .HasColumnType("integer");
 
@@ -138,6 +138,36 @@ namespace ShoppingList.Infrastructure.Persistence.Migrations
                     b.ToTable("recipe_ingredients", (string)null);
                 });
 
+            modelBuilder.Entity("ShoppingList.Domain.Entities.RecipeStep", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("RecipeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RecipeId", "SortOrder");
+
+                    b.ToTable("recipe_steps", (string)null);
+                });
+
             modelBuilder.Entity("ShoppingList.Domain.Entities.RecipeSharedPermission", b =>
                 {
                     b.Property<Guid>("Id")
@@ -147,8 +177,11 @@ namespace ShoppingList.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTime>("GrantedAt")
+                    b.Property<DateTime?>("GrantedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("InvitedByUserId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("PermissionLevel")
                         .IsRequired()
@@ -157,6 +190,13 @@ namespace ShoppingList.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("RecipeId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("Pending");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -167,6 +207,8 @@ namespace ShoppingList.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("RecipeId");
+
+                    b.HasIndex("Status");
 
                     b.HasIndex("UserId", "RecipeId")
                         .IsUnique();
@@ -183,8 +225,11 @@ namespace ShoppingList.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTime>("GrantedAt")
+                    b.Property<DateTime?>("GrantedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("InvitedByUserId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("PermissionLevel")
                         .IsRequired()
@@ -193,6 +238,13 @@ namespace ShoppingList.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("ShoppingListId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("Pending");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -203,6 +255,8 @@ namespace ShoppingList.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ShoppingListId");
+
+                    b.HasIndex("Status");
 
                     b.HasIndex("UserId", "ShoppingListId")
                         .IsUnique();
@@ -235,11 +289,6 @@ namespace ShoppingList.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("uuid");
 
-                    b.Property<string>("ShareCode")
-                        .IsRequired()
-                        .HasMaxLength(11)
-                        .HasColumnType("character varying(11)");
-
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -247,12 +296,44 @@ namespace ShoppingList.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("OwnerId");
 
-                    b.HasIndex("ShareCode")
-                        .IsUnique();
-
                     b.HasIndex("OwnerId", "IsArchived");
 
                     b.ToTable("shopping_lists", (string)null);
+                });
+
+            modelBuilder.Entity("ShoppingList.Domain.Entities.Friendship", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AddresseeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("RequesterId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AddresseeId");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("RequesterId", "AddresseeId")
+                        .IsUnique();
+
+                    b.ToTable("friendships", (string)null);
                 });
 
             modelBuilder.Entity("ShoppingList.Domain.Entities.User", b =>
@@ -273,10 +354,48 @@ namespace ShoppingList.Infrastructure.Persistence.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
+                    b.Property<bool>("EmailVerified")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("EmailVerificationToken")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTime?>("EmailVerificationTokenExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FirstName")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("FriendCode")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<string>("Gender")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("LastName")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasMaxLength(512)
                         .HasColumnType("character varying(512)");
+
+                    b.Property<string>("PhoneNumber")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("PreferredName")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -285,6 +404,17 @@ namespace ShoppingList.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("Email")
                         .IsUnique();
+
+                    b.HasIndex("EmailVerificationToken")
+                        .IsUnique()
+                        .HasFilter("\"EmailVerificationToken\" IS NOT NULL");
+
+                    b.HasIndex("FriendCode")
+                        .IsUnique();
+
+                    b.HasIndex("PhoneNumber")
+                        .IsUnique()
+                        .HasFilter("\"PhoneNumber\" IS NOT NULL");
 
                     b.ToTable("users", (string)null);
                 });
@@ -298,6 +428,25 @@ namespace ShoppingList.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("ShoppingList");
+                });
+
+            modelBuilder.Entity("ShoppingList.Domain.Entities.Friendship", b =>
+                {
+                    b.HasOne("ShoppingList.Domain.Entities.User", "Addressee")
+                        .WithMany("ReceivedFriendRequests")
+                        .HasForeignKey("AddresseeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ShoppingList.Domain.Entities.User", "Requester")
+                        .WithMany("SentFriendRequests")
+                        .HasForeignKey("RequesterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Addressee");
+
+                    b.Navigation("Requester");
                 });
 
             modelBuilder.Entity("ShoppingList.Domain.Entities.Recipe", b =>
@@ -315,6 +464,17 @@ namespace ShoppingList.Infrastructure.Persistence.Migrations
                 {
                     b.HasOne("ShoppingList.Domain.Entities.Recipe", "Recipe")
                         .WithMany("Ingredients")
+                        .HasForeignKey("RecipeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Recipe");
+                });
+
+            modelBuilder.Entity("ShoppingList.Domain.Entities.RecipeStep", b =>
+                {
+                    b.HasOne("ShoppingList.Domain.Entities.Recipe", "Recipe")
+                        .WithMany("Steps")
                         .HasForeignKey("RecipeId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -376,6 +536,8 @@ namespace ShoppingList.Infrastructure.Persistence.Migrations
                     b.Navigation("Ingredients");
 
                     b.Navigation("SharedPermissions");
+
+                    b.Navigation("Steps");
                 });
 
             modelBuilder.Entity("ShoppingList.Domain.Entities.ShoppingList", b =>
@@ -391,7 +553,11 @@ namespace ShoppingList.Infrastructure.Persistence.Migrations
 
                     b.Navigation("OwnedRecipes");
 
+                    b.Navigation("ReceivedFriendRequests");
+
                     b.Navigation("RecipeSharedPermissions");
+
+                    b.Navigation("SentFriendRequests");
 
                     b.Navigation("SharedPermissions");
                 });

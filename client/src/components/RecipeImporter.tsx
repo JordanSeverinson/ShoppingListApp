@@ -73,7 +73,7 @@ export function RecipeImporter() {
     <section className="rounded-2xl border border-border bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-center gap-2">
         <ChefHat className="h-5 w-5 text-brand-600" aria-hidden />
-        <h2 className="font-semibold text-ink">Add from recipe</h2>
+        <h2 className="font-semibold text-ink">Add from Recipe</h2>
       </div>
       <p className="mb-4 text-sm text-muted">
         Pick a saved recipe to add its ingredients to this list for everyone connected in real
@@ -81,7 +81,7 @@ export function RecipeImporter() {
       </p>
 
       {loading ? (
-        <p className="text-sm text-muted">Loading recipes…</p>
+        <p className="text-sm text-muted">Loading Recipes…</p>
       ) : recipes.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border bg-stone-50/80 px-4 py-6 text-center text-sm text-muted">
           No recipes with ingredients yet.{" "}

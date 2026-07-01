@@ -19,6 +19,16 @@ public class SharedPermissionConfiguration : IEntityTypeConfiguration<SharedPerm
                 value => Enum.Parse<PermissionLevel>(value))
             .HasMaxLength(20);
 
+        builder.Property(p => p.Status)
+            .HasConversion(
+                status => status.ToString(),
+                value => Enum.Parse<ListShareStatus>(value))
+            .HasMaxLength(20)
+            .HasDefaultValue(ListShareStatus.Pending)
+            .ValueGeneratedNever();
+
+        builder.HasIndex(p => p.Status);
+
         builder.HasIndex(p => new { p.UserId, p.ShoppingListId })
             .IsUnique();
 

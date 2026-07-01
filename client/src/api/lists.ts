@@ -1,4 +1,4 @@
-import { DEMO_USER_ID } from "../lib/userId";
+import { API_BASE, apiRequest, buildAuthHeaders } from "../lib/apiClient";
 import type {
   CheckAllItemsResponse,
   CreateItemPayload,
@@ -7,73 +7,66 @@ import type {
   ListItem,
   ListSummary,
   ListSummaryResponse,
+  ShareListResponse,
 } from "../types/list";
 
-const API_BASE = import.meta.env.VITE_API_URL ?? "";
-
-function apiHeaders(): HeadersInit {
-  return {
-    "Content-Type": "application/json",
-    "X-User-Id": DEMO_USER_ID,
-  };
-}
-
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: {
-      ...apiHeaders(),
-      ...init?.headers,
-    },
-  });
-
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(body?.error ?? `Request failed (${response.status})`);
-  }
-
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return (await response.json()) as T;
-}
-
 export function fetchMyLists(): Promise<ListSummaryResponse> {
-  return request<ListSummaryResponse>("/api/lists");
+  return apiRequest<ListSummaryResponse>("/api/lists");
 }
 
 export function createList(name: string): Promise<ListSummary> {
-  return request<ListSummary>("/api/lists", {
+  return apiRequest<ListSummary>("/api/lists", {
     method: "POST",
     body: JSON.stringify({ name }),
   });
 }
 
-export function joinList(shareCode: string): Promise<ListSummary> {
-  return request<ListSummary>("/api/lists/join", {
+export function shareList(listId: string, friendUserIds: string[]): Promise<ShareListResponse> {
+  return apiRequest<ShareListResponse>(`/api/lists/${listId}/shares`, {
     method: "POST",
-    body: JSON.stringify({ shareCode: shareCode.trim().toUpperCase() }),
+    body: JSON.stringify({ friendUserIds }),
+  });
+}
+
+export function acceptListShare(permissionId: string): Promise<ListSummary> {
+  return apiRequest<ListSummary>(`/api/lists/shares/${permissionId}/accept`, {
+    method: "POST",
+  });
+}
+
+export function declineListShare(permissionId: string): Promise<void> {
+  return apiRequest<void>(`/api/lists/shares/${permissionId}/decline`, {
+    method: "POST",
+  });
+}
+
+export function leaveList(listId: string): Promise<void> {
+  return apiRequest<void>(`/api/lists/${listId}/leave`, {
+    method: "POST",
   });
 }
 
 export function renameList(listId: string, name: string): Promise<ListSummary> {
-  return request<ListSummary>(`/api/lists/${listId}`, {
+  return apiRequest<ListSummary>(`/api/lists/${listId}`, {
     method: "PATCH",
     body: JSON.stringify({ name }),
   });
 }
 
 export function archiveList(listId: string): Promise<ListSummary> {
-  return request<ListSummary>(`/api/lists/${listId}/archive`, { method: "POST" });
+  return apiRequest<ListSummary>(`/api/lists/${listId}/archive`, { method: "POST" });
+}
+
+export function deleteList(listId: string): Promise<void> {
+  return apiRequest<void>(`/api/lists/${listId}`, { method: "DELETE" });
 }
 
 export function fetchList(listId: string): Promise<ListDetail> {
-  return request<ListDetail>(`/api/lists/${listId}`);
+  return apiRequest<ListDetail>(`/api/lists/${listId}`);
 }
 
 export function createItem(listId: string, payload: CreateItemPayload): Promise<ListItem> {
-  return request<ListItem>(`/api/lists/${listId}/items`, {
+  return apiRequest<ListItem>(`/api/lists/${listId}/items`, {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -84,14 +77,14 @@ export function updateItem(
   itemId: string,
   payload: Partial<Pick<ListItem, "name" | "quantity" | "category" | "isChecked">>,
 ): Promise<ListItem> {
-  return request<ListItem>(`/api/lists/${listId}/items/${itemId}`, {
+  return apiRequest<ListItem>(`/api/lists/${listId}/items/${itemId}`, {
     method: "PATCH",
     body: JSON.stringify(payload),
   });
 }
 
 export function deleteItem(listId: string, itemId: string): Promise<void> {
-  return request<void>(`/api/lists/${listId}/items/${itemId}`, { method: "DELETE" });
+  return apiRequest<void>(`/api/lists/${listId}/items/${itemId}`, { method: "DELETE" });
 }
 
 export function deleteItems(
@@ -111,7 +104,7 @@ export function deleteItems(
     );
   }
 
-  return request<DeleteItemsResponse>(`/api/lists/${listId}/items/delete-many`, init);
+  return apiRequest<DeleteItemsResponse>(`/api/lists/${listId}/items/delete-many`, init);
 }
 
 async function keepaliveRequest<T>(path: string, init: RequestInit): Promise<T> {
@@ -119,7 +112,7 @@ async function keepaliveRequest<T>(path: string, init: RequestInit): Promise<T> 
     ...init,
     keepalive: true,
     headers: {
-      ...apiHeaders(),
+      ...buildAuthHeaders(),
       ...init.headers,
     },
   });
@@ -140,9 +133,8 @@ export function checkAllItems(
   listId: string,
   category?: string,
 ): Promise<CheckAllItemsResponse> {
-  return request<CheckAllItemsResponse>(`/api/lists/${listId}/items/check-all`, {
+  return apiRequest<CheckAllItemsResponse>(`/api/lists/${listId}/items/check-all`, {
     method: "POST",
     body: JSON.stringify({ category: category ?? null }),
   });
 }
-

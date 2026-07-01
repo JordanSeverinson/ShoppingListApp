@@ -3,32 +3,46 @@ using ShoppingList.Application.Hubs;
 namespace ShoppingList.Api.Contracts;
 
 public record ListSummaryResponse(
-    IReadOnlyList<ListSummaryDto> SharedLists,
-    IReadOnlyList<ListSummaryDto> ArchivedLists);
+    IReadOnlyList<ListSummaryDto> ActiveLists,
+    IReadOnlyList<ListSummaryDto> ArchivedLists,
+    IReadOnlyList<PendingListShareDto> PendingShares);
 
 public record ListSummaryDto(
     Guid Id,
     string Name,
-    string ShareCode,
     bool IsArchived,
     bool IsOwner,
     DateTime? UpdatedAt,
     int ItemCount,
-    int CheckedCount);
+    int CheckedCount,
+    int AcceptedShareCount,
+    string OwnerDisplayName);
+
+public record PendingListShareDto(
+    Guid Id,
+    Guid ListId,
+    string ListName,
+    string InvitedByName,
+    Guid InvitedByUserId,
+    int ItemCount,
+    int CheckedCount,
+    bool IsArchived);
 
 public record ListDetailResponse(
     Guid Id,
     string Name,
-    string ShareCode,
     bool IsArchived,
+    bool IsOwner,
     bool CanEdit,
     IReadOnlyList<ListItemEventDto> Items);
 
 public record CreateListRequest(string Name);
 
-public record JoinListRequest(string ShareCode);
-
 public record RenameListRequest(string Name);
+
+public record ShareListRequest(IReadOnlyList<Guid> FriendUserIds);
+
+public record ShareListResponse(int InvitedCount, int SkippedCount, string Message);
 
 public record CreateItemRequest(string Name, string? Quantity, string Category);
 
