@@ -12,7 +12,7 @@ public class DevelopmentEmailSender(ILogger<DevelopmentEmailSender> logger) : IE
         logger.LogWarning(
             """
             [DEV EMAIL] Verification email for {Email} ({PreferredName})
-            Subject: Verify your Cook With Me account
+            Subject: Verify your Cook In Shop Out account
             Link: {VerificationUrl}
             """,
             email,
@@ -32,7 +32,7 @@ public class DevelopmentEmailSender(ILogger<DevelopmentEmailSender> logger) : IE
         logger.LogWarning(
             """
             [DEV EMAIL] Password reset email for {Email} ({PreferredName})
-            Subject: Reset your Cook With Me password
+            Subject: Reset your Cook In Shop Out password
             Link: {ResetUrl}
             """,
             email,

@@ -1,6 +1,7 @@
 import { Download, Loader2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { exportRecipePng } from "../lib/exportRecipePng";
+import { APP_NAME } from "../lib/appName";
 import {
   resolveRecipeDisplayData,
   type RecipeContentDocument,
@@ -72,7 +73,7 @@ export function RecipeReadOnlyView({
       >
         <header className="border-b border-border bg-stone-50 px-6 py-5">
           <p className="text-xs font-semibold uppercase tracking-widest text-brand-700">
-            Cook With Me
+            {APP_NAME}
           </p>
           <h2 className="mt-1 text-2xl font-bold tracking-tight text-ink sm:text-3xl">
             {recipeName}

@@ -21,7 +21,7 @@ public class SmtpEmailSender(IConfiguration configuration, ILogger<SmtpEmailSend
         var port = int.TryParse(configuration["Email:SmtpPort"], out var parsedPort) ? parsedPort : 587;
         var fromAddress = configuration["Email:FromAddress"]
             ?? throw new InvalidOperationException("Email:FromAddress is not configured.");
-        var fromName = configuration["Email:FromName"] ?? "Cook With Me";
+        var fromName = configuration["Email:FromName"] ?? "Cook In Shop Out";
         var username = configuration["Email:Username"];
         var password = configuration["Email:Password"];
         var enableSsl = !bool.TryParse(configuration["Email:EnableSsl"], out var ssl) || ssl;
@@ -29,7 +29,7 @@ public class SmtpEmailSender(IConfiguration configuration, ILogger<SmtpEmailSend
         using var message = new MailMessage
         {
             From = new MailAddress(fromAddress, fromName),
-            Subject = "Verify your Cook With Me account",
+            Subject = "Verify your Cook In Shop Out account",
             Body = $"""
                 Hi {preferredName},
 
@@ -73,7 +73,7 @@ public class SmtpEmailSender(IConfiguration configuration, ILogger<SmtpEmailSend
         var port = int.TryParse(configuration["Email:SmtpPort"], out var parsedPort) ? parsedPort : 587;
         var fromAddress = configuration["Email:FromAddress"]
             ?? throw new InvalidOperationException("Email:FromAddress is not configured.");
-        var fromName = configuration["Email:FromName"] ?? "Cook With Me";
+        var fromName = configuration["Email:FromName"] ?? "Cook In Shop Out";
         var username = configuration["Email:Username"];
         var password = configuration["Email:Password"];
         var enableSsl = !bool.TryParse(configuration["Email:EnableSsl"], out var ssl) || ssl;
@@ -81,7 +81,7 @@ public class SmtpEmailSender(IConfiguration configuration, ILogger<SmtpEmailSend
         using var message = new MailMessage
         {
             From = new MailAddress(fromAddress, fromName),
-            Subject = "Reset your Cook With Me password",
+            Subject = "Reset your Cook In Shop Out password",
             Body = $"""
                 Hi {preferredName},
 

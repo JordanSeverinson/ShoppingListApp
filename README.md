@@ -1,4 +1,4 @@
-# Cook With Me
+# Cook In Shop Out
 
 Shop together and cook together — shared grocery lists, saved recipes, and real-time collaboration.
 
