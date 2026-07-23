@@ -8,22 +8,20 @@ import { validatePassword } from "../lib/registrationValidation";
 
 export function ResetPasswordPage() {
   const navigate = useNavigate();
-  const [token, setToken] = useState<string | null>(null);
+  // Read the hash token immediately so a later history strip / auth redirect cannot lose it.
+  const [token] = useState(() => readAuthTokenFromUrl());
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    token ? null : "This reset link is invalid or has expired.",
+  );
 
   useEffect(() => {
-    const resetToken = readAuthTokenFromUrl();
-    if (!resetToken) {
-      setError("This reset link is invalid or has expired.");
-      return;
+    if (token) {
+      stripAuthTokenFromHistory();
     }
-
-    stripAuthTokenFromHistory();
-    setToken(resetToken);
-  }, []);
+  }, [token]);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();

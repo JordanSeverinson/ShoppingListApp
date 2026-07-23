@@ -152,18 +152,42 @@ public class AuthController(
             cancellationToken);
 
         var passwordValid = user is not null && passwords.Verify(user.PasswordHash, request.Password);
-        var canSignIn = passwordValid && user!.EmailVerified;
-
-        if (!canSignIn)
+        if (!passwordValid)
         {
             SecurityAuditLogger.LogLoginFailure(logger, email);
             return Unauthorized(new { error = "Invalid email or password." });
         }
 
-        var profile = UsersController.ToProfile(user!);
-        var token = jwtTokens.CreateToken(user!);
+        // Password matched — safe to say verification is required without enabling email enumeration.
+        if (!user!.EmailVerified)
+        {
+            SecurityAuditLogger.LogLoginFailure(logger, email);
+            try
+            {
+                await emailVerification.IssueVerificationEmailAsync(user, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to re-send verification email for {Email}", email);
+            }
+
+            return Unauthorized(new
+            {
+                error = "Please verify your email before signing in. Check your inbox for a verification link.",
+            });
+        }
+
+        if (user.SecurityStamp == Guid.Empty)
+        {
+            user.SecurityStamp = Guid.NewGuid();
+            user.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        var profile = UsersController.ToProfile(user);
+        var token = jwtTokens.CreateToken(user);
         authCookies.SetAuthCookie(Response, token);
-        SecurityAuditLogger.LogLoginSuccess(logger, user!.Id);
+        SecurityAuditLogger.LogLoginSuccess(logger, user.Id);
         return Ok(new LoginResponse(profile));
     }
 

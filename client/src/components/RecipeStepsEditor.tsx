@@ -1,5 +1,38 @@
 import { Plus, Save, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+
+function AutoResizeTextarea({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) {
+      return;
+    }
+
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
+
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      rows={1}
+      placeholder={placeholder}
+      className="min-h-[2.75rem] flex-1 resize-none overflow-hidden rounded-xl border border-border px-4 py-2.5 text-ink outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
+    />
+  );
+}
 
 export function RecipeStepsEditor({
   steps,
@@ -92,20 +125,18 @@ export function RecipeStepsEditor({
       <ol className="space-y-3">
         {draft.map((step, index) => (
           <li key={index} className="flex items-start gap-3">
-            <span className="mt-3 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
+            <span className="mt-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
               {index + 1}
             </span>
-            <textarea
+            <AutoResizeTextarea
               value={step}
-              onChange={(event) => updateStep(index, event.target.value)}
-              rows={2}
+              onChange={(value) => updateStep(index, value)}
               placeholder={`Step ${index + 1}`}
-              className="min-h-[4.5rem] flex-1 resize-y rounded-xl border border-border px-4 py-2.5 text-ink outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
             />
             <button
               type="button"
               onClick={() => removeStep(index)}
-              className="mt-2 rounded-lg p-2 text-muted hover:bg-red-50 hover:text-red-600"
+              className="mt-1 rounded-lg p-2 text-muted hover:bg-red-50 hover:text-red-600"
               aria-label={`Remove step ${index + 1}`}
             >
               <Trash2 className="h-4 w-4" />

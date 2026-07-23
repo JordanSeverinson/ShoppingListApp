@@ -68,6 +68,28 @@ export function createRecipeIngredient(
   });
 }
 
+export function updateRecipeIngredient(
+  recipeId: string,
+  ingredientId: string,
+  payload: import("../types/recipe").UpdateRecipeIngredientPayload,
+): Promise<import("../types/recipe").RecipeIngredient> {
+  return apiRequest(`/api/recipes/${recipeId}/ingredients/${ingredientId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function renameRecipeSection(
+  recipeId: string,
+  from: string,
+  to: string,
+): Promise<void> {
+  return apiRequest(`/api/recipes/${recipeId}/ingredients/rename-section`, {
+    method: "POST",
+    body: JSON.stringify({ from, to }),
+  });
+}
+
 export function deleteRecipeIngredients(
   recipeId: string,
   ingredientIds: string[],

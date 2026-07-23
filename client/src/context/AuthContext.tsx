@@ -47,6 +47,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setUnauthorizedHandler(() => {
       setUser(null);
+      const path = window.location.pathname;
+      const publicAuthPaths = [
+        "/login",
+        "/register",
+        "/forgot-password",
+        "/reset-password",
+        "/verify-email",
+      ];
+      if (publicAuthPaths.some((p) => path === p || path.startsWith(`${p}/`))) {
+        return;
+      }
+
       navigate("/login", { replace: true });
     });
 

@@ -5,7 +5,8 @@ export interface RecipeSubCategoryBlock {
 
 export interface RecipeContentRoot {
   cookingSteps: string[];
-  [key: string]: RecipeSubCategoryBlock | string[] | undefined;
+  subCategories?: RecipeSubCategoryBlock[];
+  [key: string]: RecipeSubCategoryBlock | RecipeSubCategoryBlock[] | string[] | undefined;
 }
 
 export interface RecipeContentDocument {
@@ -73,7 +74,7 @@ export function formatIngredientLine(ingredient: RecipeIngredient): string {
   return quantity ? `${quantity} ${name}` : name;
 }
 
-function buildSubCategoriesFromIngredients(
+export function buildSubCategoriesFromIngredients(
   ingredients: RecipeIngredient[],
 ): RecipeSubCategoryBlock[] {
   if (ingredients.length === 0) {
@@ -99,6 +100,19 @@ function buildSubCategoriesFromIngredients(
     description,
     ingredients: groups.get(description)!,
   }));
+}
+
+export function buildRecipeContentDocument(
+  ingredients: RecipeIngredient[],
+  cookingSteps: string[],
+): RecipeContentDocument {
+  const subCategories = buildSubCategoriesFromIngredients(ingredients);
+  return {
+    recipe: {
+      cookingSteps,
+      ...(subCategories.length > 0 ? { subCategories } : {}),
+    },
+  };
 }
 
 function inferSectionGroupsFromIngredients(
@@ -215,6 +229,14 @@ export interface CreateRecipeIngredientPayload {
   quantity?: string | null;
   category: string;
   section?: string | null;
+}
+
+export interface UpdateRecipeIngredientPayload {
+  name: string;
+  quantity?: string | null;
+  category: string;
+  section?: string | null;
+  sortOrder?: number;
 }
 
 export type RecipeImageImportMode =

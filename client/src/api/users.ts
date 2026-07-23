@@ -12,10 +12,14 @@ import type {
 } from "../types/user";
 
 export function login(email: string, password: string): Promise<LoginResponse> {
-  return apiRequest<LoginResponse>("/api/auth/login", {
-    method: "POST",
-    body: JSON.stringify({ email, password }),
-  });
+  return apiRequest<LoginResponse>(
+    "/api/auth/login",
+    {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    },
+    { skipUnauthorizedHandler: true },
+  );
 }
 
 export function logout(): Promise<void> {
@@ -59,7 +63,9 @@ export function resetPassword(token: string, password: string): Promise<ResetPas
 }
 
 export function fetchCurrentUser(): Promise<UserProfile> {
-  return apiRequest<UserProfile>("/api/users/me");
+  return apiRequest<UserProfile>("/api/users/me", undefined, {
+    skipUnauthorizedHandler: true,
+  });
 }
 
 export function updateCurrentUser(payload: UpdateUserProfilePayload): Promise<UserProfile> {

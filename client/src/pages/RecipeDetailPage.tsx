@@ -2,11 +2,10 @@ import { ArrowLeft, ChefHat, Eye, Pencil, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import * as recipesApi from "../api/recipes";
-import { AddRecipeIngredientInput } from "../components/AddRecipeIngredientInput";
 import { EditableListName } from "../components/EditableListName";
 import { RecipeImageUploader } from "../components/RecipeImageUploader";
-import { RecipeIngredientList } from "../components/RecipeIngredientList";
 import { RecipeReadOnlyView } from "../components/RecipeReadOnlyView";
+import { RecipeSectionsEditor } from "../components/RecipeSectionsEditor";
 import { RecipeStepsEditor } from "../components/RecipeStepsEditor";
 import { ShareWithFriendsModal } from "../components/ShareWithFriendsModal";
 import { enqueueDelete, flushDeletesNow, hasPendingDeletes } from "../lib/deleteQueue";
@@ -14,14 +13,19 @@ import type {
   CreateRecipeIngredientPayload,
   RecipeDetail,
   RecipeIngredient,
-  RecipeStep,
+  UpdateRecipeIngredientPayload,
 } from "../types/recipe";
+import { buildRecipeContentDocument } from "../types/recipe";
 
 function sortIngredients(ingredients: RecipeIngredient[]): RecipeIngredient[] {
   return [...ingredients].sort(
     (a, b) =>
       (a.section ?? "").localeCompare(b.section ?? "") || a.sortOrder - b.sortOrder,
   );
+}
+
+function sectionLabel(ingredient: RecipeIngredient): string {
+  return ingredient.section?.trim() || "Ingredients";
 }
 
 export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
@@ -42,10 +46,6 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
     },
     [],
   );
-
-  const patchSteps = useCallback((steps: RecipeStep[]) => {
-    setDetail((current) => (current ? { ...current, steps } : current));
-  }, []);
 
   const refresh = useCallback(async (options?: { showLoading?: boolean }) => {
     if (!recipeId) {
@@ -119,12 +119,47 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
     };
   }, [deleteKey, readOnly]);
 
-  async function leaveEditPage() {
+  function stepTextsFromDetail(recipe: RecipeDetail): string[] {
+    return recipe.content.recipe.cookingSteps.length
+      ? recipe.content.recipe.cookingSteps
+      : recipe.steps.map((step) => step.text);
+  }
+
+  const syncContent = useCallback(
+    async (ingredients: RecipeIngredient[], cookingSteps: string[]) => {
+      if (!recipeId) {
+        return;
+      }
+
+      const content = buildRecipeContentDocument(ingredients, cookingSteps);
+      try {
+        const saved = await recipesApi.saveRecipeContent(recipeId, content);
+        setDetail((current) => (current ? { ...current, content: saved } : current));
+      } catch {
+        // Ingredient edits already saved; content sync can retry on next mutation.
+      }
+    },
+    [recipeId],
+  );
+
+  async function leaveEditPage(destination: "view" | "list" = "view") {
     if (deleteKey && hasPendingDeletes(deleteKey)) {
       await flushDeletesNow(deleteKey);
     }
-    await refresh({ showLoading: false });
-    navigate(`/recipes/${recipeId}`);
+
+    if (recipeId) {
+      try {
+        const data = await recipesApi.fetchRecipe(recipeId);
+        const cookingSteps = stepTextsFromDetail(data);
+        const content = buildRecipeContentDocument(data.ingredients, cookingSteps);
+        const saved = await recipesApi.saveRecipeContent(recipeId, content);
+        setDetail({ ...data, content: saved });
+      } catch {
+        await refresh({ showLoading: false });
+      }
+    }
+
+    navigate(destination === "list" ? "/recipes" : `/recipes/${recipeId}`);
   }
 
   async function handleRename(name: string) {
@@ -140,7 +175,62 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
       return;
     }
     const created = await recipesApi.createRecipeIngredient(recipeId, payload);
-    patchIngredients((ingredients) => sortIngredients([...ingredients, created]));
+    let cookingSteps: string[] = [];
+    let nextIngredients: RecipeIngredient[] = [];
+    setDetail((current) => {
+      if (!current) {
+        return current;
+      }
+      cookingSteps = stepTextsFromDetail(current);
+      nextIngredients = sortIngredients([...current.ingredients, created]);
+      return { ...current, ingredients: nextIngredients };
+    });
+    await syncContent(nextIngredients, cookingSteps);
+  }
+
+  async function handleUpdateIngredient(
+    ingredientId: string,
+    payload: UpdateRecipeIngredientPayload,
+  ) {
+    if (!recipeId) {
+      return;
+    }
+    const updated = await recipesApi.updateRecipeIngredient(recipeId, ingredientId, payload);
+    let cookingSteps: string[] = [];
+    let nextIngredients: RecipeIngredient[] = [];
+    setDetail((current) => {
+      if (!current) {
+        return current;
+      }
+      cookingSteps = stepTextsFromDetail(current);
+      nextIngredients = sortIngredients(
+        current.ingredients.map((item) => (item.id === ingredientId ? updated : item)),
+      );
+      return { ...current, ingredients: nextIngredients };
+    });
+    await syncContent(nextIngredients, cookingSteps);
+  }
+
+  async function handleRenameSection(from: string, to: string) {
+    if (!recipeId) {
+      return;
+    }
+    await recipesApi.renameRecipeSection(recipeId, from, to);
+    let cookingSteps: string[] = [];
+    let nextIngredients: RecipeIngredient[] = [];
+    setDetail((current) => {
+      if (!current) {
+        return current;
+      }
+      cookingSteps = stepTextsFromDetail(current);
+      nextIngredients = sortIngredients(
+        current.ingredients.map((item) =>
+          sectionLabel(item) === from ? { ...item, section: to } : item,
+        ),
+      );
+      return { ...current, ingredients: nextIngredients };
+    });
+    await syncContent(nextIngredients, cookingSteps);
   }
 
   async function handleSaveSteps(steps: string[]) {
@@ -148,20 +238,15 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
       return;
     }
     const saved = await recipesApi.replaceRecipeSteps(recipeId, steps);
-    patchSteps(saved);
-    setDetail((current) =>
-      current
-        ? {
-            ...current,
-            content: {
-              recipe: {
-                ...current.content.recipe,
-                cookingSteps: steps,
-              },
-            },
-          }
-        : current,
-    );
+    let ingredients: RecipeIngredient[] = [];
+    setDetail((current) => {
+      if (!current) {
+        return current;
+      }
+      ingredients = current.ingredients;
+      return { ...current, steps: saved };
+    });
+    await syncContent(ingredients, steps);
   }
 
   const handleRemoveIngredient = useCallback(
@@ -183,6 +268,15 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
     [deleteKey, flushRecipeDeletes, patchIngredients, restoreIngredients],
   );
 
+  const handleDeleteSectionIngredients = useCallback(
+    (ingredientIds: string[]) => {
+      for (const ingredientId of ingredientIds) {
+        handleRemoveIngredient(ingredientId);
+      }
+    },
+    [handleRemoveIngredient],
+  );
+
   if (!recipeId) {
     return (
       <div className="mx-auto max-w-lg px-4 py-20 text-center text-red-700">
@@ -200,7 +294,7 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
       ? detail.content.recipe.cookingSteps
       : (detail?.steps.map((step) => step.text) ?? []);
 
-  const backLabel = readOnly ? "All recipes" : "View recipe";
+  const backLabel = "All recipes";
 
   return (
     <div className="mx-auto min-h-screen max-w-2xl px-4 py-8 sm:px-6 sm:py-12">
@@ -211,7 +305,7 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
             navigate("/recipes");
             return;
           }
-          void leaveEditPage();
+          void leaveEditPage("list");
         }}
         className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-muted hover:text-brand-700"
       >
@@ -298,10 +392,13 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
             ) : (
               <>
                 <RecipeImageUploader recipeId={recipeId} onImported={() => void refresh()} />
-                <AddRecipeIngredientInput onAdd={handleAddIngredient} />
-                <RecipeIngredientList
+                <RecipeSectionsEditor
                   ingredients={detail.ingredients}
+                  onAdd={handleAddIngredient}
+                  onUpdate={handleUpdateIngredient}
                   onRemove={handleRemoveIngredient}
+                  onRenameSection={handleRenameSection}
+                  onDeleteSectionIngredients={handleDeleteSectionIngredients}
                 />
                 <RecipeStepsEditor steps={stepTexts} onSave={handleSaveSteps} />
               </>

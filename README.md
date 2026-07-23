@@ -156,8 +156,8 @@ Local overrides go in `appsettings.Development.local.json` (see `.example` file)
 1. **Register** — `POST /api/auth/register` creates a user with `EmailVerified = false`.
 2. **Verify** — a link is sent to `/verify-email#token=…` on the frontend, which calls `POST /api/auth/verify-email` with the token.
 3. **Login** — `POST /api/auth/login` sets an httpOnly session cookie (2-hour lifetime) and returns the user profile. Login is blocked until email is verified (same generic error as wrong password).
-4. **Forgot password** — `POST /api/auth/forgot-password` with `{ email }` always returns the same message (no account enumeration). If the account exists and is verified, a reset link is sent to `/reset-password#token=…`.
-5. **Reset password** — the reset page calls `POST /api/auth/reset-password` with `{ token, password }`. Tokens expire after 1 hour and are single-use. All existing sessions are invalidated.
+4. **Forgot password** — `POST /api/auth/forgot-password` with `{ email }` always returns the same message (no account enumeration). If the account exists, a reset link is sent to `/reset-password#token=…` (works for verified and unverified accounts).
+5. **Reset password** — the reset page calls `POST /api/auth/reset-password` with `{ token, password }`. Tokens expire after 1 hour and are single-use. Completing a reset also marks the email verified and invalidates other sessions.
 6. **Change password** — `POST /api/users/me/change-password` while signed in. Other sessions are invalidated; the current browser receives a fresh cookie.
 7. **Logout** — `POST /api/auth/logout` clears the cookie and revokes the session server-side.
 
@@ -170,7 +170,7 @@ The API uses `DevelopmentEmailSender`, which **does not send real email**. After
 Link: http://localhost:5173/verify-email#token=...
 ```
 
-Copy that link into your browser to verify, then sign in. Password reset emails are logged the same way (`[DEV EMAIL] Password reset email…` with a link to `/reset-password#token=…`).
+Copy that link into your browser to verify, then sign in. Password reset emails are logged the same way (`[DEV EMAIL] Password reset email…` with a **full** link to `/reset-password#token=…`).
 
 All routes except `/api/auth/register`, `/api/auth/login`, `/api/auth/verify-email`, `/api/auth/forgot-password`, and `/api/auth/reset-password` require a valid session cookie (or `Authorization: Bearer` for API tools). The React client uses `credentials: "include"`; SignalR uses the same cookie via `withCredentials`.
 

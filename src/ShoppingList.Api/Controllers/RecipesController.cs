@@ -540,6 +540,234 @@ public class RecipesController(
 
 
 
+    [HttpPatch("{recipeId:guid}/ingredients/{ingredientId:guid}")]
+
+    [ProducesResponseType(typeof(RecipeIngredientDto), StatusCodes.Status200OK)]
+
+    public async Task<ActionResult<RecipeIngredientDto>> UpdateIngredient(
+
+        Guid recipeId,
+
+        Guid ingredientId,
+
+        [FromBody] UpdateRecipeIngredientRequest request,
+
+        CancellationToken cancellationToken)
+
+    {
+
+        var userId = currentUser.GetUserId();
+
+        var recipe = await recipeAccess.GetAccessibleRecipeAsync(recipeId, userId, cancellationToken);
+
+
+
+        if (recipe is null)
+
+        {
+
+            return NotFound(new { error = "Recipe not found." });
+
+        }
+
+
+
+        var editableCheck = RecipeAccessService.RequireEditable(recipe, userId);
+
+        if (editableCheck is not null)
+
+        {
+
+            return editableCheck;
+
+        }
+
+
+
+        var ingredient = await db.RecipeIngredients
+
+            .FirstOrDefaultAsync(i => i.RecipeId == recipeId && i.Id == ingredientId, cancellationToken);
+
+
+
+        if (ingredient is null)
+
+        {
+
+            return NotFound(new { error = "Ingredient not found." });
+
+        }
+
+
+
+        if (string.IsNullOrWhiteSpace(request.Name))
+
+        {
+
+            return BadRequest(new { error = "Ingredient name is required." });
+
+        }
+
+
+
+        ingredient.Name = request.Name.Trim();
+
+        ingredient.Quantity = string.IsNullOrWhiteSpace(request.Quantity) ? null : request.Quantity.Trim();
+
+        ingredient.Category = string.IsNullOrWhiteSpace(request.Category) ? "Other" : request.Category.Trim();
+
+        ingredient.Section = string.IsNullOrWhiteSpace(request.Section) ? null : request.Section.Trim();
+
+
+
+        if (request.SortOrder is not null)
+
+        {
+
+            ingredient.SortOrder = request.SortOrder.Value;
+
+        }
+
+
+
+        ingredient.UpdatedAt = DateTime.UtcNow;
+
+        recipe.UpdatedAt = DateTime.UtcNow;
+
+        await db.SaveChangesAsync(cancellationToken);
+
+
+
+        return Ok(RecipeAccessService.ToIngredientDto(ingredient));
+
+    }
+
+
+
+    [HttpPost("{recipeId:guid}/ingredients/rename-section")]
+
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+
+    public async Task<IActionResult> RenameIngredientSection(
+
+        Guid recipeId,
+
+        [FromBody] RenameRecipeSectionRequest request,
+
+        CancellationToken cancellationToken)
+
+    {
+
+        var from = request.From?.Trim() ?? string.Empty;
+
+        var to = request.To?.Trim() ?? string.Empty;
+
+
+
+        if (string.IsNullOrWhiteSpace(to))
+
+        {
+
+            return BadRequest(new { error = "Section name is required." });
+
+        }
+
+
+
+        if (string.Equals(from, to, StringComparison.Ordinal))
+
+        {
+
+            return NoContent();
+
+        }
+
+
+
+        var userId = currentUser.GetUserId();
+
+        var recipe = await recipeAccess.GetAccessibleRecipeMetadataAsync(recipeId, userId, cancellationToken);
+
+
+
+        if (recipe is null)
+
+        {
+
+            return NotFound(new { error = "Recipe not found." });
+
+        }
+
+
+
+        var editableCheck = RecipeAccessService.RequireEditable(recipe, userId);
+
+        if (editableCheck is not null)
+
+        {
+
+            return editableCheck;
+
+        }
+
+
+
+        var ingredients = await db.RecipeIngredients
+
+            .Where(i => i.RecipeId == recipeId)
+
+            .ToListAsync(cancellationToken);
+
+
+
+        var matched = ingredients
+
+            .Where(i => string.Equals(i.Section?.Trim() ?? "Ingredients", from, StringComparison.Ordinal))
+
+            .ToList();
+
+
+
+        foreach (var ingredient in matched)
+
+        {
+
+            ingredient.Section = to;
+
+            ingredient.UpdatedAt = DateTime.UtcNow;
+
+        }
+
+
+
+        if (matched.Count > 0)
+
+        {
+
+            var now = DateTime.UtcNow;
+
+            await db.Recipes
+
+                .Where(r => r.Id == recipeId)
+
+                .ExecuteUpdateAsync(
+
+                    setters => setters.SetProperty(r => r.UpdatedAt, now),
+
+                    cancellationToken);
+
+            await db.SaveChangesAsync(cancellationToken);
+
+        }
+
+
+
+        return NoContent();
+
+    }
+
+
+
     [HttpDelete("{recipeId:guid}/ingredients/{ingredientId:guid}")]
 
     [ProducesResponseType(StatusCodes.Status204NoContent)]

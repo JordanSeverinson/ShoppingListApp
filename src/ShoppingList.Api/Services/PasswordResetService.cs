@@ -25,7 +25,7 @@ public class PasswordResetService(
             u => u.Email.ToLower() == normalizedEmail,
             cancellationToken);
 
-        if (user is null || !user.EmailVerified)
+        if (user is null)
         {
             return;
         }
@@ -79,6 +79,9 @@ public class PasswordResetService(
         user.PasswordHash = passwords.Hash(newPassword);
         user.PasswordResetToken = null;
         user.PasswordResetTokenExpiresAt = null;
+        user.EmailVerified = true;
+        user.EmailVerificationToken = null;
+        user.EmailVerificationTokenExpiresAt = null;
         securityStamps.RotateStamp(user);
         user.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);

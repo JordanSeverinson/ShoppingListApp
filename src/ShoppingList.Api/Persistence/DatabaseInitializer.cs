@@ -53,8 +53,25 @@ public static class DatabaseInitializer
             await ApplyEmailVerificationSchemaRepairAsync(db, cancellationToken);
         }
 
+        if (!await PasswordResetColumnsArePresentAsync(db, cancellationToken))
+        {
+            logger.LogWarning(
+                "users table exists but password reset columns are missing. Applying password reset repair.");
+
+            await ApplyPasswordResetSchemaRepairAsync(db, cancellationToken);
+        }
+
+        if (!await SecurityStampColumnIsPresentAsync(db, cancellationToken))
+        {
+            logger.LogWarning(
+                "users table exists but SecurityStamp is missing. Applying security stamp repair.");
+
+            await ApplySecurityStampSchemaRepairAsync(db, cancellationToken);
+        }
+
         await RepairMisacceptedListSharesAsync(db, cancellationToken);
         await RepairMisacceptedRecipeSharesAsync(db, cancellationToken);
+        await RepairEmptySecurityStampsAsync(db, cancellationToken);
     }
 
     private static async Task ApplyUserProfileSchemaRepairAsync(
@@ -160,6 +177,102 @@ public static class DatabaseInitializer
                 WHERE "MigrationId" = '20260702120000_AddEmailVerification');
             """,
             cancellationToken);
+    }
+
+    private static async Task ApplyPasswordResetSchemaRepairAsync(
+        ApplicationDbContext db,
+        CancellationToken cancellationToken)
+    {
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS "PasswordResetToken" character varying(128);
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS "PasswordResetTokenExpiresAt" timestamp with time zone;
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_users_PasswordResetToken" ON users ("PasswordResetToken") WHERE "PasswordResetToken" IS NOT NULL;
+            """,
+            cancellationToken);
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+            SELECT '20260706120000_AddPasswordReset', '10.0.0'
+            WHERE NOT EXISTS (
+                SELECT 1 FROM "__EFMigrationsHistory"
+                WHERE "MigrationId" = '20260706120000_AddPasswordReset');
+            """,
+            cancellationToken);
+    }
+
+    private static async Task ApplySecurityStampSchemaRepairAsync(
+        ApplicationDbContext db,
+        CancellationToken cancellationToken)
+    {
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS "SecurityStamp" uuid NOT NULL DEFAULT gen_random_uuid();
+            """,
+            cancellationToken);
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+            SELECT '20260707120000_AddUserSecurityStamp', '10.0.0'
+            WHERE NOT EXISTS (
+                SELECT 1 FROM "__EFMigrationsHistory"
+                WHERE "MigrationId" = '20260707120000_AddUserSecurityStamp');
+            """,
+            cancellationToken);
+    }
+
+    private static async Task RepairEmptySecurityStampsAsync(
+        ApplicationDbContext db,
+        CancellationToken cancellationToken)
+    {
+        if (!await SecurityStampColumnIsPresentAsync(db, cancellationToken))
+        {
+            return;
+        }
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            UPDATE users
+            SET "SecurityStamp" = gen_random_uuid()
+            WHERE "SecurityStamp" = '00000000-0000-0000-0000-000000000000';
+            """,
+            cancellationToken);
+    }
+
+    private static async Task<bool> PasswordResetColumnsArePresentAsync(
+        ApplicationDbContext db,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                """SELECT "PasswordResetToken" FROM users LIMIT 1;""",
+                cancellationToken);
+            return true;
+        }
+        catch (Exception ex) when (ColumnMissing(ex))
+        {
+            return false;
+        }
+    }
+
+    private static async Task<bool> SecurityStampColumnIsPresentAsync(
+        ApplicationDbContext db,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                """SELECT "SecurityStamp" FROM users LIMIT 1;""",
+                cancellationToken);
+            return true;
+        }
+        catch (Exception ex) when (ColumnMissing(ex))
+        {
+            return false;
+        }
     }
 
     private static async Task<bool> EmailVerificationColumnsArePresentAsync(

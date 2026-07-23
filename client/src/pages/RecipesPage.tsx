@@ -2,7 +2,7 @@ import { ArrowLeft, ChefHat, Plus } from "lucide-react";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import * as recipesApi from "../api/recipes";
 
@@ -21,6 +21,7 @@ import type { PendingRecipeShare, RecipeSummary } from "../types/recipe";
 
 
 export function RecipesPage() {
+  const navigate = useNavigate();
 
   const [recipes, setRecipes] = useState<RecipeSummary[]>([]);
 
@@ -143,8 +144,7 @@ export function RecipesPage() {
       }
 
       setNewRecipeName("");
-
-      setRecipes((current) => [created, ...current]);
+      navigate(`/recipes/${created.id}/edit`);
 
     } catch (err) {
 

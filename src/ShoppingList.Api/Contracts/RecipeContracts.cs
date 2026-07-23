@@ -42,6 +42,15 @@ public record ShareRecipeResponse(int InvitedCount, int SkippedCount, string Mes
 
 public record CreateRecipeIngredientRequest(string Name, string? Quantity, string Category, string? Section);
 
+public record UpdateRecipeIngredientRequest(
+    string Name,
+    string? Quantity,
+    string Category,
+    string? Section,
+    int? SortOrder);
+
+public record RenameRecipeSectionRequest(string From, string To);
+
 public record ReplaceRecipeStepsRequest(IReadOnlyList<string> Steps);
 
 public record DeleteRecipeIngredientsRequest(IReadOnlyList<Guid> IngredientIds);

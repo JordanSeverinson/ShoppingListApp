@@ -24,8 +24,11 @@ function buildJsonHeaders(extra?: HeadersInit): HeadersInit {
   return headers;
 }
 
-export async function handleResponse<T>(response: Response): Promise<T> {
-  if (response.status === 401) {
+export async function handleResponse<T>(
+  response: Response,
+  options?: { skipUnauthorizedHandler?: boolean },
+): Promise<T> {
+  if (response.status === 401 && !options?.skipUnauthorizedHandler) {
     unauthorizedHandler?.();
   }
 
@@ -45,7 +48,11 @@ export async function handleResponse<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
 
-export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+export async function apiRequest<T>(
+  path: string,
+  init?: RequestInit,
+  options?: { skipUnauthorizedHandler?: boolean },
+): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     credentials: "include",
@@ -55,7 +62,7 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
     },
   });
 
-  return handleResponse<T>(response);
+  return handleResponse<T>(response, options);
 }
 
 export async function apiKeepaliveRequest<T>(path: string, init: RequestInit): Promise<T> {
