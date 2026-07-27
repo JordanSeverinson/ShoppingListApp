@@ -1,6 +1,6 @@
 import { ChefHat, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import * as recipesApi from "../api/recipes";
 import { useShoppingList } from "../context/ShoppingListContext";
 import type { RecipeSummary } from "../types/recipe";

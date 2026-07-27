@@ -5,8 +5,12 @@ public static class SecurityAuditLogger
     public static void LogLoginSuccess(ILogger logger, Guid userId) =>
         logger.LogInformation("Security audit: login success UserId={UserId}", userId);
 
-    public static void LogLoginFailure(ILogger logger, string email) =>
-        logger.LogWarning("Security audit: login failure Email={Email}", email);
+    public static void LogLoginFailure(ILogger logger, string email)
+    {
+        var at = email.LastIndexOf('@');
+        var domain = at >= 0 && at < email.Length - 1 ? email[(at + 1)..] : "unknown";
+        logger.LogWarning("Security audit: login failure EmailDomain={EmailDomain}", domain);
+    }
 
     public static void LogLogout(ILogger logger, Guid userId) =>
         logger.LogInformation("Security audit: logout UserId={UserId}", userId);

@@ -65,14 +65,14 @@ export function fetchList(listId: string): Promise<ListDetail> {
   return apiRequest<ListDetail>(`/api/lists/${listId}`);
 }
 
-export function createItem(listId: string, payload: CreateItemPayload): Promise<ListItem> {
+export function createListItem(listId: string, payload: CreateItemPayload): Promise<ListItem> {
   return apiRequest<ListItem>(`/api/lists/${listId}/items`, {
     method: "POST",
     body: JSON.stringify(payload),
   });
 }
 
-export function updateItem(
+export function updateListItem(
   listId: string,
   itemId: string,
   payload: Partial<Pick<ListItem, "name" | "quantity" | "category" | "isChecked">>,
@@ -83,11 +83,7 @@ export function updateItem(
   });
 }
 
-export function deleteItem(listId: string, itemId: string): Promise<void> {
-  return apiRequest<void>(`/api/lists/${listId}/items/${itemId}`, { method: "DELETE" });
-}
-
-export function deleteItems(
+export function deleteListItems(
   listId: string,
   itemIds: string[],
   options?: { keepalive?: boolean },

@@ -1,9 +1,9 @@
 import { ChefHat, ChevronRight, Pencil, Trash2, UserPlus, Users } from "lucide-react";
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import * as recipesApi from "../api/recipes";
 import type { RecipeSummary } from "../types/recipe";
-import { EditableListName } from "./EditableListName";
+import { EditableName } from "./EditableName";
 import { ShareWithFriendsModal } from "./ShareWithFriendsModal";
 
 export function RecipeCard({
@@ -43,7 +43,7 @@ export function RecipeCard({
               )}
             </div>
 
-            <EditableListName
+            <EditableName
               name={recipe.name}
               size="sm"
               onSave={(name) => onRename(recipe.id, name)}

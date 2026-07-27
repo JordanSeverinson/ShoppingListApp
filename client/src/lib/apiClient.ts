@@ -1,6 +1,9 @@
 import { ApiError } from "./apiError";
+import { getCsrfToken } from "./csrf";
 
 export const API_BASE = import.meta.env.VITE_API_URL ?? "";
+
+export const CSRF_HEADER_NAME = "X-CSRF";
 
 let unauthorizedHandler: (() => void) | null = null;
 
@@ -8,10 +11,13 @@ export function setUnauthorizedHandler(handler: (() => void) | null) {
   unauthorizedHandler = handler;
 }
 
-function buildJsonHeaders(extra?: HeadersInit): HeadersInit {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
+function mergeHeaders(base: Record<string, string>, extra?: HeadersInit): HeadersInit {
+  const headers: Record<string, string> = { ...base };
+
+  const csrf = getCsrfToken();
+  if (csrf) {
+    headers[CSRF_HEADER_NAME] = csrf;
+  }
 
   if (extra) {
     for (const [key, value] of Object.entries(extra)) {
@@ -22,6 +28,14 @@ function buildJsonHeaders(extra?: HeadersInit): HeadersInit {
   }
 
   return headers;
+}
+
+function buildJsonHeaders(extra?: HeadersInit): HeadersInit {
+  return mergeHeaders({ "Content-Type": "application/json" }, extra);
+}
+
+function buildCsrfHeaders(extra?: HeadersInit): HeadersInit {
+  return mergeHeaders({}, extra);
 }
 
 export async function handleResponse<T>(
@@ -88,6 +102,7 @@ export async function apiFormRequest<T>(
     ...init,
     method: init?.method ?? "POST",
     credentials: "include",
+    headers: buildCsrfHeaders(),
     body: formData,
   });
 

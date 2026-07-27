@@ -1,9 +1,9 @@
 import { Archive, ChevronRight, History, LogOut, Trash2, UserPlus, Users } from "lucide-react";
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import * as listsApi from "../api/lists";
 import { getListOwnershipLabel, type ListSummary } from "../types/list";
-import { EditableListName } from "./EditableListName";
+import { EditableName } from "./EditableName";
 import { ShareWithFriendsModal } from "./ShareWithFriendsModal";
 
 export function ListCard({
@@ -43,7 +43,7 @@ export function ListCard({
                 {getListOwnershipLabel(list)}
               </div>
             )}
-            <EditableListName
+            <EditableName
               name={list.name}
               size="sm"
               onSave={(name) => onRename(list.id, name)}

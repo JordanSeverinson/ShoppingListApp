@@ -7,19 +7,23 @@
     "ExpiryMinutes": "1440"
   },
   "Cors": {
-    "AllowedOrigins": [ "https://your-domain.com" ]
+    "AllowedOrigins": [ "https://app.your-real-domain.com" ]
   },
   "App": {
-    "FrontendBaseUrl": "https://your-domain.com"
+    "FrontendBaseUrl": "https://app.your-real-domain.com"
   },
-  "AllowedHosts": "your-domain.com;www.your-domain.com;api.your-domain.com",
+  "AllowedHosts": "api.your-real-domain.com",
+  "ForwardedHeaders": {
+    "KnownProxies": [ "10.0.0.4" ],
+    "KnownNetworks": [ "10.0.0.0/8" ]
+  },
   "Email": {
     "SmtpHost": "smtp.example.com",
     "SmtpPort": "587",
     "EnableSsl": true,
     "Username": "your-smtp-username",
     "Password": "YOUR_SMTP_PASSWORD",
-    "FromAddress": "noreply@your-domain.com",
+    "FromAddress": "noreply@your-real-domain.com",
     "FromName": "Cook In Shop Out"
   }
 }

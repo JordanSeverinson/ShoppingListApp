@@ -15,6 +15,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<RecipeStep> RecipeSteps => Set<RecipeStep>();
     public DbSet<RecipeSharedPermission> RecipeSharedPermissions => Set<RecipeSharedPermission>();
     public DbSet<Friendship> Friendships => Set<Friendship>();
+    public DbSet<RevokedJwt> RevokedJwts => Set<RevokedJwt>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

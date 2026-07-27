@@ -1,7 +1,7 @@
 import { Check, Pencil } from "lucide-react";
 import { useEffect, useState } from "react";
 
-export function EditableListName({
+export function EditableName({
   name,
   onSave,
   size = "lg",
@@ -99,7 +99,7 @@ export function EditableListName({
         type="button"
         onClick={() => setEditing(true)}
         className="rounded-lg p-1.5 text-muted opacity-100 transition hover:bg-stone-100 hover:text-ink sm:opacity-0 sm:group-hover:opacity-100"
-        aria-label="Rename list"
+        aria-label="Rename"
       >
         <Pencil className="h-4 w-4" />
       </button>

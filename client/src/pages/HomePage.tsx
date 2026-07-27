@@ -1,6 +1,6 @@
 import { Bell, ChefHat, LogIn, LogOut, ShoppingBag, ShoppingCart, UserCircle, Users } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router";
 import * as listsApi from "../api/lists";
 import * as recipesApi from "../api/recipes";
 import { useAuth } from "../context/AuthContext";

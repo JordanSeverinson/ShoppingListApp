@@ -7,10 +7,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import * as usersApi from "../api/users";
 import { isApiError } from "../lib/apiError";
 import { setUnauthorizedHandler } from "../lib/apiClient";
+import { clearCsrfToken, ensureCsrfToken } from "../lib/csrf";
 import type { RegisterPayload, UserProfile } from "../types/user";
 
 interface AuthContextValue {
@@ -68,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     async function bootstrap() {
       try {
+        await ensureCsrfToken();
         await refreshUser();
       } catch (err) {
         if (isApiError(err) && err.status === 401) {
@@ -83,6 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const response = await usersApi.login(email, password);
+    await ensureCsrfToken();
     setUser(response.user);
   }, []);
 
@@ -94,7 +97,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await usersApi.logout();
     } finally {
+      clearCsrfToken();
       setUser(null);
+      try {
+        await ensureCsrfToken();
+      } catch {
+        // Anonymous CSRF is best-effort after logout.
+      }
     }
   }, []);
 

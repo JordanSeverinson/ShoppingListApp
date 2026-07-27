@@ -5,7 +5,7 @@ import type {
   SendFriendRequestResponse,
 } from "../types/friend";
 
-export function fetchFriends(): Promise<FriendsResponse> {
+export function fetchMyFriends(): Promise<FriendsResponse> {
   return apiRequest<FriendsResponse>("/api/friends");
 }
 

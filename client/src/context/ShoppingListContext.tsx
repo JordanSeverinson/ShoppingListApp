@@ -189,7 +189,7 @@ export function ShoppingListProvider({
 
   const flushListDeletes = useCallback(
     (itemIds: string[], options?: { keepalive?: boolean }) =>
-      listsApi.deleteItems(listId, itemIds, options),
+      listsApi.deleteListItems(listId, itemIds, options),
     [listId],
   );
 
@@ -220,7 +220,7 @@ export function ShoppingListProvider({
       if (!canEdit) {
         return;
       }
-      const created = await listsApi.createItem(listId, payload);
+      const created = await listsApi.createListItem(listId, payload);
       patchItems((items) => upsertItem(items, created));
     },
     [canEdit, listId, patchItems],
@@ -246,7 +246,7 @@ export function ShoppingListProvider({
       );
 
       try {
-        await listsApi.updateItem(listId, itemId, { isChecked });
+        await listsApi.updateListItem(listId, itemId, { isChecked });
       } catch (err) {
         patchItems((items) =>
           items.map((item) =>
@@ -307,7 +307,7 @@ export function ShoppingListProvider({
       if (!canEdit) {
         return;
       }
-      const updated = await listsApi.updateItem(listId, itemId, patch);
+      const updated = await listsApi.updateListItem(listId, itemId, patch);
       patchItems((items) => upsertItem(items, updated));
     },
     [canEdit, listId, patchItems],
@@ -337,7 +337,7 @@ export function ShoppingListProvider({
       if (!canEdit) {
         throw new Error("This list is archived and cannot be edited.");
       }
-      const result = await recipesApi.importRecipeToList(listId, recipeId);
+      const result = await recipesApi.importRecipe(listId, recipeId);
       if (result.items.length > 0) {
         patchItems((items) => mergeItems(items, result.items));
       }

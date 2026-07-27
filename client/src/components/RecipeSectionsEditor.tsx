@@ -1,22 +1,17 @@
 import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CATEGORIES, suggestCategory } from "../lib/categories";
+import { DEFAULT_SECTION_TITLE, sectionLabelFromIngredient } from "../lib/recipeSections";
 import type {
   CreateRecipeIngredientPayload,
   RecipeIngredient,
   UpdateRecipeIngredientPayload,
 } from "../types/recipe";
 
-const DEFAULT_SECTION_TITLE = "Ingredients";
-
 type RecipeEditorSection = {
   key: string;
   title: string;
 };
-
-function sectionLabel(ingredient: RecipeIngredient): string {
-  return ingredient.section?.trim() || DEFAULT_SECTION_TITLE;
-}
 
 function buildEditorSections(
   ingredients: RecipeIngredient[],
@@ -24,9 +19,10 @@ function buildEditorSections(
   const sectionTitles: string[] = [];
   for (const ingredient of [...ingredients].sort(
     (a, b) =>
-      sectionLabel(a).localeCompare(sectionLabel(b)) || a.sortOrder - b.sortOrder,
+      sectionLabelFromIngredient(a).localeCompare(sectionLabelFromIngredient(b)) ||
+      a.sortOrder - b.sortOrder,
   )) {
-    const title = sectionLabel(ingredient);
+    const title = sectionLabelFromIngredient(ingredient);
     if (!sectionTitles.includes(title)) {
       sectionTitles.push(title);
     }
@@ -51,7 +47,7 @@ function groupIngredientsBySection(
   const titleToKey = new Map(sections.map((section) => [section.title, section.key]));
 
   for (const ingredient of [...ingredients].sort((a, b) => a.sortOrder - b.sortOrder)) {
-    const title = sectionLabel(ingredient);
+    const title = sectionLabelFromIngredient(ingredient);
     const key = titleToKey.get(title);
     if (key) {
       groups.get(key)!.push(ingredient);
@@ -107,7 +103,7 @@ export function RecipeSectionsEditor({
       const emptyExtraSections = current.filter(
         (section) =>
           !nextTitles.includes(section.title) &&
-          !ingredients.some((item) => sectionLabel(item) === section.title),
+          !ingredients.some((item) => sectionLabelFromIngredient(item) === section.title),
       );
 
       if (
@@ -164,7 +160,7 @@ export function RecipeSectionsEditor({
     }
 
     const hasIngredients = ingredients.some(
-      (item) => sectionLabel(item) === previousTitle,
+      (item) => sectionLabelFromIngredient(item) === previousTitle,
     );
     if (hasIngredients) {
       await onRenameSection(previousTitle, nextTitle);

@@ -1,8 +1,8 @@
 import { ArrowLeft, ChefHat, Eye, Pencil, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams } from "react-router";
 import * as recipesApi from "../api/recipes";
-import { EditableListName } from "../components/EditableListName";
+import { EditableName } from "../components/EditableName";
 import { RecipeImageUploader } from "../components/RecipeImageUploader";
 import { RecipeReadOnlyView } from "../components/RecipeReadOnlyView";
 import { RecipeSectionsEditor } from "../components/RecipeSectionsEditor";
@@ -10,6 +10,7 @@ import { RecipeStepsEditor } from "../components/RecipeStepsEditor";
 import { ShareWithFriendsModal } from "../components/ShareWithFriendsModal";
 import { enqueueDelete, flushDeletesNow, hasPendingDeletes } from "../lib/deleteQueue";
 import { RECIPE_TYPES, type RecipeType } from "../lib/recipeTypes";
+import { sectionLabelFromIngredient } from "../lib/recipeSections";
 import type {
   CreateRecipeIngredientPayload,
   RecipeDetail,
@@ -25,10 +26,6 @@ function sortIngredients(ingredients: RecipeIngredient[]): RecipeIngredient[] {
   );
 }
 
-function sectionLabel(ingredient: RecipeIngredient): string {
-  return ingredient.section?.trim() || "Ingredients";
-}
-
 function cookingStepsFromRecipe(recipe: RecipeDetail): string[] {
   return recipe.content.recipe.cookingSteps.length
     ? recipe.content.recipe.cookingSteps
@@ -41,7 +38,7 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
   const [recipe, setRecipe] = useState<RecipeDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [shareStatusMessage, setShareStatusMessage] = useState<string | null>(null);
   const deleteQueueKey = recipeId ? `recipe:${recipeId}` : null;
 
@@ -247,7 +244,7 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
       cookingSteps = cookingStepsFromRecipe(previous);
       nextIngredients = sortIngredients(
         previous.ingredients.map((item) =>
-          sectionLabel(item) === from ? { ...item, section: to } : item,
+          sectionLabelFromIngredient(item) === from ? { ...item, section: to } : item,
         ),
       );
       return { ...previous, ingredients: nextIngredients };
@@ -259,7 +256,7 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
     if (!recipeId) {
       return;
     }
-    const savedSteps = await recipesApi.replaceRecipeSteps(recipeId, steps);
+    const savedSteps = await recipesApi.saveRecipeSteps(recipeId, steps);
     let ingredients: RecipeIngredient[] = [];
     setRecipe((previous) => {
       if (!previous) {
@@ -371,7 +368,7 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
               )}
             </div>
 
-            <EditableListName
+            <EditableName
               name={recipe.name}
               size="lg"
               readOnly={readOnly}
@@ -409,7 +406,7 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
               <div className="mt-4">
                 <button
                   type="button"
-                  onClick={() => setShareModalOpen(true)}
+                  onClick={() => setShareOpen(true)}
                   className="inline-flex items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-4 py-2 text-sm font-medium text-brand-800 transition hover:border-brand-300 hover:bg-brand-100"
                 >
                   <UserPlus className="h-4 w-4" aria-hidden />
@@ -451,10 +448,10 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
 
           {recipeId && (
             <ShareWithFriendsModal
-              open={shareModalOpen}
+              open={shareOpen}
               itemName={recipe.name}
               itemLabel="recipe"
-              onClose={() => setShareModalOpen(false)}
+              onClose={() => setShareOpen(false)}
               onShared={(message) => setShareStatusMessage(message)}
               onShare={(friendUserIds) => recipesApi.shareRecipe(recipeId, friendUserIds)}
             />

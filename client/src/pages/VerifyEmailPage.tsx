@@ -1,6 +1,6 @@
 import { CheckCircle2, ShoppingCart, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router";
 import * as usersApi from "../api/users";
 import { APP_NAME } from "../lib/appName";
 

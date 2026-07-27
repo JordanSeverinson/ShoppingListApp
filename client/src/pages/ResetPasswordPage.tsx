@@ -1,6 +1,6 @@
 import { KeyRound, ShoppingCart } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router";
 import * as usersApi from "../api/users";
 import { readAuthTokenFromUrl, stripAuthTokenFromHistory } from "../lib/authTokenFromUrl";
 import { APP_NAME } from "../lib/appName";

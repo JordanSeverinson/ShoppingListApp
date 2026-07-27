@@ -7,6 +7,7 @@ import type {
   RecipeImageImportMode,
   RecipeSummary,
   RecipeSummaryResponse,
+  ShareRecipeResponse,
   UploadRecipeImageResponse,
 } from "../types/recipe";
 
@@ -27,7 +28,7 @@ export function createRecipe(
 export function shareRecipe(
   recipeId: string,
   friendUserIds: string[],
-): Promise<{ invitedCount: number; skippedCount: number; message: string }> {
+): Promise<ShareRecipeResponse> {
   return apiRequest(`/api/recipes/${recipeId}/shares`, {
     method: "POST",
     body: JSON.stringify({ friendUserIds }),
@@ -118,7 +119,7 @@ export function deleteRecipeIngredients(
   return apiRequest<DeleteRecipeIngredientsResponse>(path, init);
 }
 
-export function replaceRecipeSteps(
+export function saveRecipeSteps(
   recipeId: string,
   steps: string[],
 ): Promise<import("../types/recipe").RecipeStep[]> {
@@ -153,7 +154,7 @@ export function uploadRecipeImage(
   );
 }
 
-export function importRecipeToList(
+export function importRecipe(
   listId: string,
   recipeId: string,
 ): Promise<ImportRecipeResponse> {

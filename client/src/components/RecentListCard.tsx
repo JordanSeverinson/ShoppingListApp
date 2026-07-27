@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import type { ListSummary } from "../types/list";
 
 export function RecentListCard({ list }: { list: ListSummary }) {

@@ -18,6 +18,7 @@ public class AuthController(
     PasswordService passwords,
     JwtTokenService jwtTokens,
     AuthCookieService authCookies,
+    CsrfTokenService csrfTokens,
     FriendCodeAllocationService friendCodes,
     EmailVerificationService emailVerification,
     PasswordResetService passwordReset,
@@ -26,6 +27,15 @@ public class AuthController(
 {
     private static readonly HashSet<string> AllowedGenders =
         new(StringComparer.OrdinalIgnoreCase) { "Male", "Female", "Non-binary" };
+
+    [HttpGet("csrf")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(CsrfTokenResponse), StatusCodes.Status200OK)]
+    public ActionResult<CsrfTokenResponse> GetCsrfToken()
+    {
+        var token = csrfTokens.IssueToken(Response);
+        return Ok(new CsrfTokenResponse(token));
+    }
 
     [HttpPost("register")]
     [AllowAnonymous]
@@ -187,6 +197,7 @@ public class AuthController(
         var profile = UsersController.ToProfile(user);
         var token = jwtTokens.CreateToken(user);
         authCookies.SetAuthCookie(Response, token);
+        csrfTokens.IssueToken(Response);
         SecurityAuditLogger.LogLoginSuccess(logger, user.Id);
         return Ok(new LoginResponse(profile));
     }
@@ -194,7 +205,7 @@ public class AuthController(
     [HttpPost("logout")]
     [Authorize]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public IActionResult Logout()
+    public async Task<IActionResult> Logout(CancellationToken cancellationToken)
     {
         var userId = User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value;
         if (Guid.TryParse(userId, out var parsedUserId))
@@ -205,10 +216,11 @@ public class AuthController(
         var token = ExtractAuthToken();
         if (!string.IsNullOrWhiteSpace(token))
         {
-            jwtDenylist.Revoke(token);
+            await jwtDenylist.RevokeAsync(token, cancellationToken);
         }
 
         authCookies.ClearAuthCookie(Response);
+        csrfTokens.ClearToken(Response);
         return NoContent();
     }
 

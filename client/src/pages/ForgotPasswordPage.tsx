@@ -1,6 +1,6 @@
 import { KeyRound, ShoppingCart } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import * as usersApi from "../api/users";
 import { APP_NAME } from "../lib/appName";
 import { validateEmail } from "../lib/registrationValidation";

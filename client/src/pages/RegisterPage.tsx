@@ -1,6 +1,6 @@
 import { ShoppingCart, UserPlus } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router";
 import * as usersApi from "../api/users";
 import { useAuth } from "../context/AuthContext";
 import { APP_NAME } from "../lib/appName";

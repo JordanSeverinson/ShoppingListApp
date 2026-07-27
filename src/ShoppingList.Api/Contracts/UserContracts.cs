@@ -45,3 +45,5 @@ public record ResetPasswordRequest(string Token, string Password);
 public record ResetPasswordResponse(bool Success, string Message);
 
 public record LoginResponse(UserProfileDto User);
+
+public record CsrfTokenResponse(string CsrfToken);

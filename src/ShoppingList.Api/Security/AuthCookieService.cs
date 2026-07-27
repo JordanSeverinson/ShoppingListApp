@@ -12,25 +12,23 @@ public class AuthCookieService(IHostEnvironment environment, IConfiguration conf
         response.Cookies.Append(
             AuthConstants.CookieName,
             token,
-            new CookieOptions
-            {
-                HttpOnly = true,
-                Secure = !environment.IsDevelopment(),
-                SameSite = SameSiteMode.Lax,
-                MaxAge = TimeSpan.FromMinutes(expiryMinutes),
-                Path = "/",
-            });
+            CreateOptions(TimeSpan.FromMinutes(expiryMinutes)));
     }
 
     public void ClearAuthCookie(HttpResponse response)
     {
         response.Cookies.Delete(
             AuthConstants.CookieName,
-            new CookieOptions
-            {
-                Path = "/",
-                Secure = !environment.IsDevelopment(),
-                SameSite = SameSiteMode.Lax,
-            });
+            CreateOptions(maxAge: null));
     }
+
+    private CookieOptions CreateOptions(TimeSpan? maxAge) =>
+        new()
+        {
+            HttpOnly = true,
+            Secure = !environment.IsDevelopment(),
+            SameSite = environment.IsDevelopment() ? SameSiteMode.Lax : SameSiteMode.Strict,
+            MaxAge = maxAge,
+            Path = "/",
+        };
 }

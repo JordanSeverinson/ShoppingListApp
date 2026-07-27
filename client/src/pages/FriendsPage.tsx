@@ -1,6 +1,6 @@
 import { ArrowLeft, Mail, Phone, UserPlus, Users } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Link, Navigate } from "react-router-dom";
+import { Link, Navigate } from "react-router";
 import { useAuth } from "../context/AuthContext";
 import * as friendsApi from "../api/friends";
 import { ConfirmModal } from "../components/ConfirmModal";
@@ -43,23 +43,23 @@ export function FriendsPage() {
   const [friendsData, setFriendsData] = useState<FriendsResponse | null>(null);
   const [lookupMethod, setLookupMethod] = useState<FriendLookupMethod>("email");
   const [lookupValue, setLookupValue] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
+  const [listLoading, setListLoading] = useState(true);
+  const [sendingRequest, setSendingRequest] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [friendToRemove, setFriendToRemove] = useState<FriendSummary | null>(null);
   const [removing, setRemoving] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const loadFriends = useCallback(async () => {
+    setListLoading(true);
     setError(null);
     try {
-      const friends = await friendsApi.fetchFriends();
+      const friends = await friendsApi.fetchMyFriends();
       setFriendsData(friends);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load friends");
     } finally {
-      setLoading(false);
+      setListLoading(false);
     }
   }, []);
 
@@ -68,8 +68,8 @@ export function FriendsPage() {
       return;
     }
 
-    void load();
-  }, [load, isAuthenticated, authLoading]);
+    void loadFriends();
+  }, [loadFriends, isAuthenticated, authLoading]);
 
   const selectedLookup = LOOKUP_OPTIONS.find((option) => option.method === lookupMethod)!;
 
@@ -79,19 +79,19 @@ export function FriendsPage() {
       return;
     }
 
-    setBusy(true);
+    setSendingRequest(true);
     setError(null);
-    setMessage(null);
+    setStatusMessage(null);
 
     try {
       const result = await friendsApi.sendFriendRequest(lookupMethod, lookupValue);
-      setMessage(result.message);
+      setStatusMessage(result.message);
       setLookupValue("");
-      await load();
+      await loadFriends();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not send friend request");
     } finally {
-      setBusy(false);
+      setSendingRequest(false);
     }
   }
 
@@ -99,7 +99,7 @@ export function FriendsPage() {
     setError(null);
     try {
       await friendsApi.acceptFriendRequest(requestId);
-      await load();
+      await loadFriends();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not accept request");
     }
@@ -109,7 +109,7 @@ export function FriendsPage() {
     setError(null);
     try {
       await friendsApi.declineFriendRequest(requestId);
-      await load();
+      await loadFriends();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not decline request");
     }
@@ -125,7 +125,7 @@ export function FriendsPage() {
     try {
       await friendsApi.removeFriend(friendToRemove.userId);
       setFriendToRemove(null);
-      await load();
+      await loadFriends();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not remove friend");
     } finally {
@@ -214,10 +214,10 @@ export function FriendsPage() {
           />
           <button
             type="submit"
-            disabled={busy || !lookupValue.trim()}
+            disabled={sendingRequest || !lookupValue.trim()}
             className="rounded-xl bg-brand-600 px-6 py-2.5 font-medium text-white hover:bg-brand-700 disabled:opacity-50"
           >
-            {busy ? "Sending…" : "Add friend"}
+            {sendingRequest ? "Sending…" : "Add friend"}
           </button>
         </form>
       </section>
@@ -228,13 +228,13 @@ export function FriendsPage() {
         </p>
       )}
 
-      {message && (
+      {statusMessage && (
         <p className="mb-6 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-800">
-          {message}
+          {statusMessage}
         </p>
       )}
 
-      {loading ? (
+      {listLoading ? (
         <p className="text-center text-muted">Loading friends…</p>
       ) : (
         <>

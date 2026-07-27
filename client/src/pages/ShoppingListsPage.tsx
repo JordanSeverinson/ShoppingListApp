@@ -1,6 +1,6 @@
 import { ArrowLeft, Plus, ShoppingCart } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router";
 import * as listsApi from "../api/lists";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { ListCard } from "../components/ListCard";
@@ -14,12 +14,12 @@ export function ShoppingListsPage() {
   const [activeLists, setActiveLists] = useState<ListSummary[]>([]);
   const [archivedLists, setArchivedLists] = useState<ListSummary[]>([]);
   const [pendingShares, setPendingShares] = useState<PendingListShare[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [newListName, setNewListName] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [shareBusy, setShareBusy] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [shareActionBusy, setShareActionBusy] = useState(false);
   const [listToDelete, setListToDelete] = useState<ListSummary | null>(null);
   const [listToArchive, setListToArchive] = useState<ListSummary | null>(null);
   const [listToLeave, setListToLeave] = useState<ListSummary | null>(null);
@@ -27,42 +27,42 @@ export function ShoppingListsPage() {
   const [archiving, setArchiving] = useState(false);
   const [leaving, setLeaving] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const loadLists = useCallback(async () => {
+    setListLoading(true);
     setError(null);
     try {
-      const data = await listsApi.fetchMyLists();
-      setActiveLists(data.activeLists);
-      setArchivedLists(data.archivedLists);
-      setPendingShares(data.pendingShares);
+      const summary = await listsApi.fetchMyLists();
+      setActiveLists(summary.activeLists);
+      setArchivedLists(summary.archivedLists);
+      setPendingShares(summary.pendingShares);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load lists");
     } finally {
-      setLoading(false);
+      setListLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void loadLists();
+  }, [loadLists]);
 
   useEffect(() => {
-    if (!loading && window.location.hash === "#pending-shares") {
+    if (!listLoading && window.location.hash === "#pending-shares") {
       document.getElementById("pending-shares")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
-  }, [loading, pendingShares.length]);
+  }, [listLoading, pendingShares.length]);
 
   useEffect(() => {
-    if (!message) {
+    if (!statusMessage) {
       return;
     }
 
     const timeoutId = window.setTimeout(() => {
-      setMessage(null);
+      setStatusMessage(null);
     }, 3000);
 
     return () => window.clearTimeout(timeoutId);
-  }, [message]);
+  }, [statusMessage]);
 
   async function handleCreate(event: FormEvent) {
     event.preventDefault();
@@ -70,7 +70,7 @@ export function ShoppingListsPage() {
       return;
     }
 
-    setBusy(true);
+    setCreating(true);
     setError(null);
     try {
       const created = await listsApi.createList(newListName.trim());
@@ -82,13 +82,13 @@ export function ShoppingListsPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create list");
     } finally {
-      setBusy(false);
+      setCreating(false);
     }
   }
 
   async function handleRename(listId: string, name: string) {
     await listsApi.renameList(listId, name);
-    await load();
+    await loadLists();
   }
 
   function requestArchive(list: ListSummary) {
@@ -105,7 +105,7 @@ export function ShoppingListsPage() {
     try {
       await listsApi.archiveList(listToArchive.id);
       setListToArchive(null);
-      await load();
+      await loadLists();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not archive list");
     } finally {
@@ -162,22 +162,22 @@ export function ShoppingListsPage() {
   }
 
   async function handleAcceptShare(share: PendingListShare) {
-    setShareBusy(true);
+    setShareActionBusy(true);
     setError(null);
     try {
       await listsApi.acceptListShare(share.id);
       setPendingShares((current) => current.filter((item) => item.id !== share.id));
-      setMessage(`You joined ${share.listName}.`);
-      await load();
+      setStatusMessage(`You joined ${share.listName}.`);
+      await loadLists();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not accept share");
     } finally {
-      setShareBusy(false);
+      setShareActionBusy(false);
     }
   }
 
   async function handleDeclineShare(share: PendingListShare) {
-    setShareBusy(true);
+    setShareActionBusy(true);
     setError(null);
     try {
       await listsApi.declineListShare(share.id);
@@ -185,7 +185,7 @@ export function ShoppingListsPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not decline share");
     } finally {
-      setShareBusy(false);
+      setShareActionBusy(false);
     }
   }
 
@@ -229,17 +229,17 @@ export function ShoppingListsPage() {
           />
           <button
             type="submit"
-            disabled={busy || !newListName.trim()}
+            disabled={creating || !newListName.trim()}
             className="w-full rounded-xl bg-brand-600 py-2.5 font-medium text-white hover:bg-brand-700 disabled:opacity-50"
           >
-            {busy ? "Creating…" : "Create list"}
+            {creating ? "Creating…" : "Create list"}
           </button>
         </form>
       </section>
 
-      {message && (
+      {statusMessage && (
         <p className="mb-6 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-800">
-          {message}
+          {statusMessage}
         </p>
       )}
 
@@ -249,7 +249,7 @@ export function ShoppingListsPage() {
         </p>
       )}
 
-      {loading ? (
+      {listLoading ? (
         <p className="text-center text-muted">Loading lists…</p>
       ) : (
         <>
@@ -272,7 +272,7 @@ export function ShoppingListsPage() {
                   <PendingListShareCard
                     key={share.id}
                     share={share}
-                    busy={shareBusy}
+                    busy={shareActionBusy}
                     onAccept={(item) => void handleAcceptShare(item)}
                     onDecline={(item) => void handleDeclineShare(item)}
                   />
@@ -298,7 +298,7 @@ export function ShoppingListsPage() {
                     onArchive={requestArchive}
                     onDelete={requestDelete}
                     onLeave={requestLeave}
-                    onShared={(text) => setMessage(text)}
+                    onShared={(text) => setStatusMessage(text)}
                   />
                 ))}
               </div>

@@ -35,30 +35,56 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
         options.JsonSerializerOptions.Converters.Add(new RecipeContentRootJsonConverter());
     });
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(options =>
+
+// Swagger is Development-only and must be explicitly enabled (never available in Staging/Production).
+var swaggerEnabled = builder.Environment.IsDevelopment()
+    && builder.Configuration.GetValue("Swagger:Enabled", false);
+
+if (swaggerEnabled)
 {
-    options.SwaggerDoc("v1", new OpenApiInfo { Title = "Cook In Shop Out API", Version = "v1" });
-    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    builder.Services.AddEndpointsApiExplorer();
+    builder.Services.AddSwaggerGen(options =>
     {
-        Description = "JWT Authorization header using the Bearer scheme.",
-        Name = "Authorization",
-        In = ParameterLocation.Header,
-        Type = SecuritySchemeType.Http,
-        Scheme = "bearer",
-        BearerFormat = "JWT"
-    });
-    options.AddSecurityRequirement(new OpenApiSecurityRequirement
-    {
+        options.SwaggerDoc("v1", new OpenApiInfo { Title = "Cook In Shop Out API", Version = "v1" });
+        options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
         {
-            new OpenApiSecurityScheme
+            Description =
+                "Optional. Paste a JWT as Bearer. Prefer logging in via /api/auth/login so the auth_token cookie is set.",
+            Name = "Authorization",
+            In = ParameterLocation.Header,
+            Type = SecuritySchemeType.Http,
+            Scheme = "bearer",
+            BearerFormat = "JWT"
+        });
+        options.AddSecurityDefinition("Cookie", new OpenApiSecurityScheme
+        {
+            Description = $"HttpOnly JWT cookie ({AuthConstants.CookieName}) set by login/register.",
+            Name = AuthConstants.CookieName,
+            In = ParameterLocation.Cookie,
+            Type = SecuritySchemeType.ApiKey
+        });
+        options.AddSecurityRequirement(new OpenApiSecurityRequirement
+        {
             {
-                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
-            },
-            Array.Empty<string>()
-        }
+                new OpenApiSecurityScheme
+                {
+                    Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
+                },
+                Array.Empty<string>()
+            }
+        });
+        options.AddSecurityRequirement(new OpenApiSecurityRequirement
+        {
+            {
+                new OpenApiSecurityScheme
+                {
+                    Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Cookie" }
+                },
+                Array.Empty<string>()
+            }
+        });
     });
-});
+}
 
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
@@ -128,6 +154,7 @@ builder.Services.AddScoped<CurrentUserService>();
 builder.Services.AddScoped<PasswordService>();
 builder.Services.AddScoped<JwtTokenService>();
 builder.Services.AddScoped<AuthCookieService>();
+builder.Services.AddScoped<CsrfTokenService>();
 builder.Services.AddScoped<ListAccessService>();
 builder.Services.AddScoped<RecipeAccessService>();
 builder.Services.AddScoped<RecipeSharingService>();
@@ -140,7 +167,7 @@ builder.Services.AddScoped<UserSecurityStampService>();
 builder.Services.AddSingleton<HubConnectionTracker>();
 builder.Services.AddScoped<ListHubNotifier>();
 builder.Services.AddMemoryCache();
-builder.Services.AddSingleton<JwtDenylistService>();
+builder.Services.AddScoped<JwtDenylistService>();
 
 if (builder.Environment.IsDevelopment())
 {
@@ -161,6 +188,33 @@ if (Encoding.UTF8.GetByteCount(jwtKey) < AuthConstants.MinJwtKeyBytes)
         $"Jwt:Key must be at least {AuthConstants.MinJwtKeyBytes} bytes when UTF-8 encoded.");
 }
 
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    // Do not trust forwarded headers unless proxies/networks are explicitly configured.
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+
+    foreach (var proxy in builder.Configuration.GetSection("ForwardedHeaders:KnownProxies").Get<string[]>() ?? [])
+    {
+        if (System.Net.IPAddress.TryParse(proxy, out var address))
+        {
+            options.KnownProxies.Add(address);
+        }
+    }
+
+    foreach (var network in builder.Configuration.GetSection("ForwardedHeaders:KnownNetworks").Get<string[]>() ?? [])
+    {
+        var parts = network.Split('/', 2, StringSplitOptions.TrimEntries);
+        if (parts.Length == 2
+            && System.Net.IPAddress.TryParse(parts[0], out var prefix)
+            && int.TryParse(parts[1], out var prefixLength))
+        {
+            options.KnownIPNetworks.Add(new System.Net.IPNetwork(prefix, prefixLength));
+        }
+    }
+});
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -173,7 +227,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuerSigningKey = true,
             ValidIssuer = jwtSection["Issuer"],
             ValidAudience = jwtSection["Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
+            ClockSkew = TimeSpan.Zero,
         };
 
         options.Events = new JwtBearerEvents
@@ -206,7 +261,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                     }
                 }
 
-                if (!string.IsNullOrWhiteSpace(rawToken) && denylist.IsRevoked(rawToken))
+                if (!string.IsNullOrWhiteSpace(rawToken)
+                    && await denylist.IsRevokedAsync(rawToken, context.HttpContext.RequestAborted))
                 {
                     context.Fail("Token has been revoked.");
                     return;
@@ -234,7 +290,12 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.FallbackPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
+});
 
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
     ?? ["http://localhost:5173"];
@@ -243,31 +304,74 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("Frontend", policy =>
         policy.WithOrigins(allowedOrigins)
-            .WithHeaders("Content-Type", "Authorization")
+            // Origins are allowlisted; any header is fine for SPA + SignalR negotiate.
+            .AllowAnyHeader()
             .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
             .AllowCredentials());
 });
 
 var app = builder.Build();
 
-app.UseForwardedHeaders(new ForwardedHeadersOptions
-{
-    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
-});
+ProductionSecurityValidator.Validate(
+    app.Environment,
+    app.Configuration,
+    app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("ProductionSecurity"));
+
+app.UseForwardedHeaders();
 
 app.UseExceptionHandler();
 app.UseMiddleware<SecurityHeadersMiddleware>();
+app.UseMiddleware<OriginAllowlistMiddleware>();
+app.UseMiddleware<CookieCsrfMiddleware>();
+
+if (!swaggerEnabled)
+{
+    // Defense in depth: never serve OpenAPI/Swagger outside the Development gate.
+    app.Use(async (context, next) =>
+    {
+        var path = context.Request.Path.Value ?? string.Empty;
+        if (path.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase))
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        await next();
+    });
+}
 
 if (!app.Environment.IsDevelopment())
 {
     app.UseHsts();
 }
 
+if (swaggerEnabled)
+{
+    app.UseSwagger(options =>
+    {
+        options.RouteTemplate = "swagger/{documentName}/swagger.json";
+    });
+    app.UseSwaggerUI(options =>
+    {
+        options.SwaggerEndpoint("/swagger/v1/swagger.json", "Cook In Shop Out API v1");
+        options.RoutePrefix = "swagger";
+        options.DisplayRequestDuration();
+        options.EnablePersistAuthorization();
+        options.UseRequestInterceptor(
+            """
+            (request) => {
+              const match = document.cookie.match(/(?:^|; )csrf_token=([^;]*)/);
+              if (match) {
+                request.headers['X-CSRF'] = decodeURIComponent(match[1]);
+              }
+              return request;
+            }
+            """);
+    });
+}
+
 if (app.Environment.IsDevelopment())
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
-
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>()

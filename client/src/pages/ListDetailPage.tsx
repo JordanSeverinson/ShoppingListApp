@@ -1,11 +1,11 @@
 import { ArrowLeft, History, LogOut, ShoppingCart, UserPlus } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router";
 import * as listsApi from "../api/lists";
 import { AddItemInput } from "../components/AddItemInput";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { ConnectionBadge } from "../components/ConnectionBadge";
-import { EditableListName } from "../components/EditableListName";
+import { EditableName } from "../components/EditableName";
 import { ListView } from "../components/ListView";
 import { RecipeImporter } from "../components/RecipeImporter";
 import { ShareWithFriendsModal } from "../components/ShareWithFriendsModal";
@@ -80,7 +80,7 @@ function ListDetailContent() {
           )}
         </div>
 
-        <EditableListName name={listName} size="lg" onSave={renameList} />
+        <EditableName name={listName} size="lg" onSave={renameList} />
 
         {isOwner && !isArchived && (
           <div className="mt-4">

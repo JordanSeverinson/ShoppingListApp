@@ -259,6 +259,12 @@ export interface DeleteRecipeIngredientsResponse {
   ingredientIds: string[];
 }
 
+export interface ShareRecipeResponse {
+  invitedCount: number;
+  skippedCount: number;
+  message: string;
+}
+
 export interface ImportRecipeResponse {
   listId: string;
   items: import("./list").ListItem[];

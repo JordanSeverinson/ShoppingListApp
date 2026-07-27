@@ -1,6 +1,6 @@
 import { ArrowLeft, KeyRound, Save, UserCircle } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
-import { Link, Navigate } from "react-router-dom";
+import { Link, Navigate } from "react-router";
 import * as usersApi from "../api/users";
 import { useAuth } from "../context/AuthContext";
 import { validatePassword, validatePreferredName } from "../lib/registrationValidation";
@@ -14,9 +14,9 @@ export function ProfilePage() {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [preferredName, setPreferredName] = useState("");
   const [gender, setGender] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -47,14 +47,14 @@ export function ProfilePage() {
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    setBusy(true);
+    setSavingProfile(true);
     setError(null);
-    setMessage(null);
+    setStatusMessage(null);
 
     const preferredNameError = validatePreferredName(preferredName);
     if (preferredNameError) {
       setError(preferredNameError);
-      setBusy(false);
+      setSavingProfile(false);
       return;
     }
 
@@ -66,11 +66,11 @@ export function ProfilePage() {
         gender: gender || null,
       });
       await refreshUser();
-      setMessage("Profile saved.");
+      setStatusMessage("Profile saved.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save profile");
     } finally {
-      setBusy(false);
+      setSavingProfile(false);
     }
   }
 
@@ -197,19 +197,19 @@ export function ProfilePage() {
           </p>
         )}
 
-        {message && (
+        {statusMessage && (
           <p className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-800">
-            {message}
+            {statusMessage}
           </p>
         )}
 
         <button
           type="submit"
-          disabled={busy}
+          disabled={savingProfile}
           className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-2.5 font-medium text-white hover:bg-brand-700 disabled:opacity-50"
         >
           <Save className="h-4 w-4" aria-hidden />
-          {busy ? "Saving…" : "Save profile"}
+          {savingProfile ? "Saving…" : "Save profile"}
         </button>
       </form>
 

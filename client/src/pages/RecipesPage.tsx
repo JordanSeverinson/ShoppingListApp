@@ -1,6 +1,6 @@
 import { ArrowLeft, ChefHat, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router";
 import * as recipesApi from "../api/recipes";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { PendingRecipeShareCard } from "../components/PendingRecipeShareCard";

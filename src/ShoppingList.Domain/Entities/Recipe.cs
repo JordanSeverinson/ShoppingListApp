@@ -1,5 +1,4 @@
 using ShoppingList.Domain.Common;
-
 using ShoppingList.Domain.Recipes;
 
 namespace ShoppingList.Domain.Entities;

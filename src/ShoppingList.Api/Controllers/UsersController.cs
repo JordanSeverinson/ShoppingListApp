@@ -90,6 +90,7 @@ public class UsersController(
 
                 user.Email = email;
                 user.EmailVerified = false;
+                securityStamps.RotateStamp(user);
                 emailChanged = true;
             }
         }
@@ -169,6 +170,8 @@ public class UsersController(
         if (emailChanged)
         {
             await emailVerification.IssueVerificationEmailAsync(user, cancellationToken);
+            var token = jwtTokens.CreateToken(user);
+            authCookies.SetAuthCookie(Response, token);
         }
 
         await EnsureProfileDefaultsAsync(user, cancellationToken);

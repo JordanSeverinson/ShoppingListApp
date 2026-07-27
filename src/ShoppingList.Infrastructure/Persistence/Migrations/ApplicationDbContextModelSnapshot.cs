@@ -342,6 +342,33 @@ namespace ShoppingList.Infrastructure.Persistence.Migrations
                     b.ToTable("friendships", (string)null);
                 });
 
+            modelBuilder.Entity("ShoppingList.Domain.Entities.RevokedJwt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.ToTable("revoked_jwts", (string)null);
+                });
+
             modelBuilder.Entity("ShoppingList.Domain.Entities.User", b =>
                 {
                     b.Property<Guid>("Id")

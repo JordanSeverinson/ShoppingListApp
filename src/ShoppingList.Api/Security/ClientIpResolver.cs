@@ -2,14 +2,10 @@ namespace ShoppingList.Api.Security;
 
 public static class ClientIpResolver
 {
-    public static string GetClientIp(HttpContext httpContext)
-    {
-        var forwarded = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault();
-        if (!string.IsNullOrWhiteSpace(forwarded))
-        {
-            return forwarded.Split(',')[0].Trim();
-        }
-
-        return httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-    }
+    /// <summary>
+    /// Uses the connection remote address after Forwarded Headers middleware has
+    /// rewritten it from trusted proxies only. Never reads raw X-Forwarded-For.
+    /// </summary>
+    public static string GetClientIp(HttpContext httpContext) =>
+        httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 }
