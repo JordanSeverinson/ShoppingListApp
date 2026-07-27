@@ -2,20 +2,21 @@
 
 Shop together and cook together — shared grocery lists, saved recipes, and real-time collaboration.
 
-**Stack:** React 19 · Vite · TypeScript · Tailwind CSS · .NET 10 · PostgreSQL · EF Core · SignalR · Tesseract OCR
+**Stack:** React 19 · Vite · TypeScript · Tailwind CSS · React Router 8 · .NET 10 · PostgreSQL · EF Core · SignalR · Tesseract OCR
 
 ## Table of contents
 
 - [Features](#features)
 - [Quick start](#quick-start)
 - [Configuration](#configuration)
-- [Authentication](#authentication)
+- [Authentication and security](#authentication-and-security)
 - [Sharing model](#sharing-model)
 - [Frontend routes](#frontend-routes)
 - [API reference](#api-reference)
 - [Real-time updates (SignalR)](#real-time-updates-signalr)
 - [Project structure](#project-structure)
 - [Development notes](#development-notes)
+- [Production deployment](#production-deployment)
 - [Tests](#tests)
 - [Troubleshooting](#troubleshooting)
 
@@ -24,8 +25,9 @@ Shop together and cook together — shared grocery lists, saved recipes, and rea
 ### Accounts and profile
 - Register with email, password, preferred name, optional phone and gender
 - Email verification required before sign-in
-- JWT authentication via **httpOnly cookie** (`auth_token`); session sent automatically on API and SignalR requests
+- JWT session via **httpOnly** cookie (`auth_token`) plus a double-submit **CSRF** cookie
 - Edit profile (email, phone, preferred name, gender) and view your **friend code**
+- Forgot / reset password and change password (invalidates other sessions)
 
 ### Friends
 - Send friend requests by **email**, **phone number**, or **friend code**
@@ -41,9 +43,11 @@ Shop together and cook together — shared grocery lists, saved recipes, and rea
 - Category grouping and “check all in category”
 
 ### Recipes
-- Create recipes with ingredients, cooking steps, and structured content (sections)
+- Create and edit recipes with **sectioned ingredients**, cooking steps, and structured content JSON
+- Assign a **recipe type** (Main Course, Side Dish, Snack, Dessert, Drink) for filtering
+- Search and filter recipes by name and type
 - **Share with friends** — same accept/decline flow as lists
-- Edit or view recipes; upload images for OCR ingredient/step extraction (Tesseract)
+- Upload images for OCR ingredient/step extraction (Tesseract)
 - Import a recipe’s ingredients into any accessible shopping list
 
 ## Quick start
@@ -69,7 +73,7 @@ cd ShoppingListApp
 copy src\ShoppingList.Api\appsettings.Development.local.json.example src\ShoppingList.Api\appsettings.Development.local.json
 ```
 
-Edit `appsettings.Development.local.json` with your Postgres password and a JWT signing key (at least 32 characters). Do not put secrets in `appsettings.json` — it is committed to git.
+Edit `appsettings.Development.local.json` with your Postgres password and a JWT signing key (**at least 32 characters**). Do not put secrets in committed `appsettings.json`.
 
 **Client** (optional):
 
@@ -77,7 +81,7 @@ Edit `appsettings.Development.local.json` with your Postgres password and a JWT 
 copy client\.env.example client\.env
 ```
 
-In local development the Vite dev server proxies `/api` and `/hubs` to the API, so `VITE_API_URL` is usually not needed.
+In local development the Vite proxy forwards `/api` and `/hubs` to the API, so `VITE_API_URL` is usually not needed.
 
 ### 2. Database
 
@@ -108,8 +112,8 @@ cd src\ShoppingList.Api
 dotnet run
 ```
 
-- API: http://localhost:5294  
-- Swagger: http://localhost:5294/swagger  
+- API: http://localhost:5294
+- Swagger: http://localhost:5294/swagger (Development + `Swagger:Enabled` only)
 
 **Terminal 2 — client**
 
@@ -119,69 +123,88 @@ npm install
 npm run dev
 ```
 
-- App: http://localhost:5173  
+- App: http://localhost:5173
 
 ### 5. First login
 
 1. Open http://localhost:5173/register and create an account.
-2. Check the **API console** for the verification link (see [Authentication](#authentication)).
+2. Check the **API console** for the verification link (see [Authentication and security](#authentication-and-security)).
 3. Open the link, then sign in at `/login`.
 
 ## Configuration
 
-### API (`appsettings.json` / `appsettings.Development.local.json`)
+### API (`appsettings*.json` / `*.local.json`)
 
 | Key | Purpose |
 |-----|---------|
 | `ConnectionStrings:DefaultConnection` | PostgreSQL connection string |
 | `Jwt:Issuer` / `Jwt:Audience` | JWT issuer and audience (defaults: `ShoppingListApp`) |
-| `Jwt:Key` | Signing secret — **required**, min ~32 chars |
+| `Jwt:Key` | Signing secret — **required**, min 32 UTF-8 bytes |
+| `Jwt:ExpiryMinutes` | Session lifetime (default `120`) |
 | `Cors:AllowedOrigins` | Frontend origin(s), default `http://localhost:5173` |
-| `App:FrontendBaseUrl` | Base URL for email verification links |
-| `AllowedHosts` | Host header allowlist (`localhost` in dev; set your domains in production) |
-| `Email:*` | SMTP settings for production email (see `appsettings.Production.local.json.example`) |
+| `App:FrontendBaseUrl` | Base URL for email verification / reset links |
+| `AllowedHosts` | Host header allowlist |
+| `Swagger:Enabled` | Swagger UI (only honored in Development; must be `false` in Production) |
+| `ForwardedHeaders:KnownProxies` | Trusted reverse-proxy IPs (Production behind a load balancer) |
+| `ForwardedHeaders:KnownNetworks` | Trusted proxy CIDR networks (optional) |
+| `Email:*` | SMTP settings for production email |
 | `Tesseract:DataPath` | Path to tessdata folder (default `./tessdata`) |
 | `Tesseract:Language` | OCR language (default `eng`) |
 
-Local overrides go in `appsettings.Development.local.json` (see `.example` file). Production secrets go in `appsettings.Production.local.json` (see `.example` file).
+- Local overrides: `appsettings.Development.local.json` (see `.example`)
+- Production secrets: `appsettings.Production.local.json` (see `.example`)
 
 ### Client (`client/.env`)
 
 | Variable | Purpose |
 |----------|---------|
-| `VITE_API_URL` | API base URL when **not** using the Vite proxy (e.g. production builds). Leave empty for `npm run dev`. |
+| `VITE_API_URL` | API base URL when **not** using the Vite proxy (production builds). Leave empty for `npm run dev`. |
 
-## Authentication
+CSP `connect-src` is injected at build time from `VITE_API_URL` (or same-origin + local WS when unset).
+
+## Authentication and security
+
+### Session flow
 
 1. **Register** — `POST /api/auth/register` creates a user with `EmailVerified = false`.
-2. **Verify** — a link is sent to `/verify-email#token=…` on the frontend, which calls `POST /api/auth/verify-email` with the token.
-3. **Login** — `POST /api/auth/login` sets an httpOnly session cookie (2-hour lifetime) and returns the user profile. Login is blocked until email is verified (same generic error as wrong password).
-4. **Forgot password** — `POST /api/auth/forgot-password` with `{ email }` always returns the same message (no account enumeration). If the account exists, a reset link is sent to `/reset-password#token=…` (works for verified and unverified accounts).
-5. **Reset password** — the reset page calls `POST /api/auth/reset-password` with `{ token, password }`. Tokens expire after 1 hour and are single-use. Completing a reset also marks the email verified and invalidates other sessions.
-6. **Change password** — `POST /api/users/me/change-password` while signed in. Other sessions are invalidated; the current browser receives a fresh cookie.
-7. **Logout** — `POST /api/auth/logout` clears the cookie and revokes the session server-side.
+2. **Verify** — link goes to `/verify-email#token=…`, which calls `POST /api/auth/verify-email`.
+3. **CSRF** — client calls `GET /api/auth/csrf` to receive a random token (also set as non-httpOnly `csrf_token` cookie). Mutating cookie-authenticated requests must send matching `X-CSRF`.
+4. **Login** — `POST /api/auth/login` sets httpOnly `auth_token` and refreshes CSRF. Login is blocked until email is verified (same generic error as wrong password).
+5. **Forgot / reset password** — tokens expire after 1 hour, are single-use, and reset also marks email verified and rotates the security stamp.
+6. **Change password / email** — rotates security stamp (other sessions die). Password change re-issues the current browser’s auth cookie.
+7. **Logout** — clears cookies and persists a hashed JWT denylist entry (works across API instances).
 
 ### Development email
 
-The API uses `DevelopmentEmailSender`, which **does not send real email**. After registration, look in the API console for a log block like:
+`DevelopmentEmailSender` does **not** send real email. After registration or password reset, look in the API console:
 
 ```
 [DEV EMAIL] Verification email for user@example.com (Name)
 Link: http://localhost:5173/verify-email#token=...
 ```
 
-Copy that link into your browser to verify, then sign in. Password reset emails are logged the same way (`[DEV EMAIL] Password reset email…` with a **full** link to `/reset-password#token=…`).
+### Auth requirements
 
-All routes except `/api/auth/register`, `/api/auth/login`, `/api/auth/verify-email`, `/api/auth/forgot-password`, and `/api/auth/reset-password` require a valid session cookie (or `Authorization: Bearer` for API tools). The React client uses `credentials: "include"`; SignalR uses the same cookie via `withCredentials`.
+- Endpoints are authenticated by default (`FallbackPolicy`). Only auth/register/login/verify/forgot/reset/csrf are anonymous.
+- Session cookie or `Authorization: Bearer` is accepted. The React client uses cookies + `credentials: "include"`; SignalR uses `withCredentials` and sends `X-CSRF` on negotiate.
+- In Production, auth cookies use `SameSite=Strict` and `Secure`.
+
+### Other protections (high level)
+
+- Swagger only when Development **and** `Swagger:Enabled`; otherwise `/swagger*` returns 404
+- Origin allowlist for browser `Origin` headers
+- Rate limits on auth, friend lookup, and OCR (keyed on real client IP after trusted forwarded headers)
+- OCR upload: size limit, MIME allowlist, magic-byte check, concurrency gate
+- Production startup validation rejects placeholder CORS/hosts/frontend URLs and enabled Swagger
 
 ## Sharing model
 
 Lists and recipes use the same friend-sharing pattern:
 
-1. **Owner** shares with one or more **accepted friends** (`POST …/shares` with `friendUserIds`).
-2. Each friend receives a **pending** invitation (`pendingShares` on `GET /api/lists` or `/api/recipes`).
-3. The friend **accepts** or **declines** (`POST …/shares/{permissionId}/accept|decline`).
-4. Only **accepted** shares grant access. Owners see share counts on list cards (“Shared with N people”).
+1. **Owner** shares with accepted friends (`POST …/shares` with `friendUserIds`).
+2. Friend receives a **pending** invitation (`pendingShares` on list/recipe GETs).
+3. Friend **accepts** or **declines**.
+4. Only **accepted** shares grant access.
 
 Shared grocery lists can be **left** by non-owners (`POST /api/lists/{listId}/leave`).
 
@@ -195,28 +218,29 @@ Shared grocery lists can be **left** by non-owners (`POST /api/lists/{listId}/le
 | `/verify-email` | Public | Email verification handler |
 | `/forgot-password` | Public | Request a password reset link |
 | `/reset-password` | Public | Set a new password from email link |
-| `/profile` | Required | Edit profile, friend code |
+| `/profile` | Required | Edit profile, friend code, change password |
 | `/friends` | Required | Friends and requests |
 | `/lists` | Required | Active, archived, and pending list shares |
 | `/lists/:listId` | Required | List detail (real-time) |
-| `/recipes` | Required | Recipes and pending recipe shares |
+| `/recipes` | Required | Recipes (search/filter) and pending shares |
 | `/recipes/:recipeId` | Required | Recipe view |
-| `/recipes/:recipeId/edit` | Required | Recipe edit |
+| `/recipes/:recipeId/edit` | Required | Recipe edit (sections, steps, OCR) |
 
 ## API reference
 
-Unless noted, all endpoints require a valid JWT. JSON bodies use **camelCase**.
+Unless noted, endpoints require a valid session. JSON uses **camelCase**. Cookie-authenticated `POST`/`PUT`/`PATCH`/`DELETE` (and SignalR negotiate) require a valid `X-CSRF` header.
 
-### Auth (public)
+### Auth
 
-| Method | Route | Description |
-|--------|-------|-------------|
-| POST | `/api/auth/register` | Create account |
-| POST | `/api/auth/login` | Sign in → `{ user }` (sets httpOnly cookie) |
-| POST | `/api/auth/logout` | Clear session cookie |
-| POST | `/api/auth/verify-email` | Verify email address (`{ token }`) |
-| POST | `/api/auth/forgot-password` | Request password reset (`{ email }`) |
-| POST | `/api/auth/reset-password` | Reset password (`{ token, password }`) |
+| Method | Route | Auth | Description |
+|--------|-------|------|-------------|
+| GET | `/api/auth/csrf` | Public | Issue CSRF cookie + `{ csrfToken }` |
+| POST | `/api/auth/register` | Public | Create account |
+| POST | `/api/auth/login` | Public | Sign in → `{ user }` (sets cookies) |
+| POST | `/api/auth/logout` | Required | Clear session + revoke JWT |
+| POST | `/api/auth/verify-email` | Public | `{ token }` |
+| POST | `/api/auth/forgot-password` | Public | `{ email }` |
+| POST | `/api/auth/reset-password` | Public | `{ token, password }` |
 
 ### Users
 
@@ -224,7 +248,7 @@ Unless noted, all endpoints require a valid JWT. JSON bodies use **camelCase**.
 |--------|-------|-------------|
 | GET | `/api/users/me` | Current user profile |
 | PATCH | `/api/users/me` | Update profile |
-| POST | `/api/users/me/change-password` | Change password (`{ currentPassword, newPassword }`) |
+| POST | `/api/users/me/change-password` | `{ currentPassword, newPassword }` |
 
 ### Friends
 
@@ -253,8 +277,8 @@ Unless noted, all endpoints require a valid JWT. JSON bodies use **camelCase**.
 | POST | `/api/lists/{listId}/items` | Add item |
 | PATCH | `/api/lists/{listId}/items/{itemId}` | Update / toggle item |
 | DELETE | `/api/lists/{listId}/items/{itemId}` | Remove item |
-| POST | `/api/lists/{listId}/items/check-all` | Check/uncheck all items (optional category filter) |
-| POST | `/api/lists/{listId}/items/delete-many` | Bulk delete `{ ingredientIds }` |
+| POST | `/api/lists/{listId}/items/check-all` | Check/uncheck all (optional category filter) |
+| POST | `/api/lists/{listId}/items/delete-many` | Bulk delete `{ itemIds }` |
 | POST | `/api/lists/{listId}/import-recipe/{recipeId}` | Add recipe ingredients to list |
 
 ### Recipes
@@ -262,33 +286,37 @@ Unless noted, all endpoints require a valid JWT. JSON bodies use **camelCase**.
 | Method | Route | Description |
 |--------|-------|-------------|
 | GET | `/api/recipes` | Recipes and `pendingShares` |
-| POST | `/api/recipes` | Create recipe |
+| POST | `/api/recipes` | Create recipe (optional `recipeType`) |
 | GET | `/api/recipes/{recipeId}` | Recipe detail |
-| PATCH | `/api/recipes/{recipeId}` | Rename recipe |
+| PATCH | `/api/recipes/{recipeId}` | Update name and/or `recipeType` |
 | DELETE | `/api/recipes/{recipeId}` | Delete recipe (owner only) |
 | POST | `/api/recipes/{recipeId}/shares` | Share with friends |
 | POST | `/api/recipes/shares/{permissionId}/accept` | Accept recipe invitation |
 | POST | `/api/recipes/shares/{permissionId}/decline` | Decline recipe invitation |
 | POST | `/api/recipes/{recipeId}/ingredients` | Add ingredient |
+| PATCH | `/api/recipes/{recipeId}/ingredients/{ingredientId}` | Update ingredient |
+| POST | `/api/recipes/{recipeId}/ingredients/rename-section` | Rename an ingredient section |
 | DELETE | `/api/recipes/{recipeId}/ingredients/{ingredientId}` | Remove ingredient |
-| POST | `/api/recipes/{recipeId}/ingredients/delete-many` | Bulk delete ingredients |
+| POST | `/api/recipes/{recipeId}/ingredients/delete-many` | Bulk delete `{ ingredientIds }` |
 | PUT | `/api/recipes/{recipeId}/steps` | Replace cooking steps |
 | PUT | `/api/recipes/{recipeId}/content` | Save structured recipe JSON |
 | POST | `/api/recipes/{recipeId}/upload-image` | OCR import (`multipart/form-data`: `image`, optional `importMode`) |
 
 `importMode` values: `FullRecipeWithSteps`, `IngredientsOnly`, `CookingStepsOnly`.
 
-Interactive documentation: http://localhost:5294/swagger (Development only).
+`recipeType` values: `Main Course`, `Side Dish`, `Snack`, `Dessert`, `Drink`.
+
+Interactive docs: http://localhost:5294/swagger (Development only when enabled).
 
 ## Real-time updates (SignalR)
 
-**Hub:** `/hubs/shopping-list` (requires session cookie or Bearer token)
+**Hub:** `/hubs/shopping-list` (requires session cookie or Bearer token + CSRF on HTTP negotiate)
 
 **Client → server**
 
 | Method | Description |
 |--------|-------------|
-| `JoinList(listId)` | Subscribe to list updates |
+| `JoinList(listId)` | Subscribe to list updates (access-checked) |
 | `LeaveList(listId)` | Unsubscribe |
 
 **Server → client** (after joining a list group)
@@ -303,7 +331,7 @@ Interactive documentation: http://localhost:5294/swagger (Development only).
 | `ItemsBulkToggled` | `itemIds`, `isChecked` |
 | `ItemsBulkDeleted` | `itemIds` |
 
-The React client connects when you open a list detail page and reconnects automatically.
+The React client connects on the list detail page and reconnects automatically. Revoked share access removes the user from the hub group.
 
 ## Project structure
 
@@ -314,14 +342,16 @@ ShoppingListApp/
 │       ├── api/            # REST client wrappers
 │       ├── components/     # UI components
 │       ├── context/        # Auth + shopping list state
-│       └── pages/          # Route pages
+│       ├── lib/            # apiClient, CSRF, SignalR, validation helpers
+│       ├── pages/          # Route pages
+│       └── types/          # Shared DTOs
 ├── src/
-│   ├── ShoppingList.Domain/          # Entities, enums, value objects
-│   ├── ShoppingList.Application/     # Parsers, validators, DTOs, recipe builders
+│   ├── ShoppingList.Domain/          # Entities, enums
+│   ├── ShoppingList.Application/     # Validators, DTOs, recipe helpers, OCR interface
 │   ├── ShoppingList.Infrastructure/  # EF Core, migrations, Tesseract OCR
-│   └── ShoppingList.Api/             # Controllers, hubs, auth, services
-├── scripts/                # tessdata download helper
-├── tests/                  # Unit tests (Infrastructure)
+│   └── ShoppingList.Api/             # Controllers, hubs, auth, security middleware
+├── scripts/                # tessdata download, dependency audit
+├── tests/                  # Unit tests
 └── tools/SchemaRepair/     # One-off DB schema repair utility
 ```
 
@@ -329,15 +359,13 @@ ShoppingListApp/
 
 ### EF Core migrations
 
-Add a migration after entity changes:
-
 ```powershell
 dotnet ef migrations add <Name> --project src/ShoppingList.Infrastructure --startup-project src/ShoppingList.Api
 ```
 
 ### Schema repair
 
-If an older database is missing columns the initializer expects, the API runs repair SQL on startup in Development. For manual repair:
+If an older database is missing columns the initializer expects, the API can run repair SQL on startup in Development. For manual repair:
 
 ```powershell
 dotnet run --project tools/SchemaRepair
@@ -345,42 +373,53 @@ dotnet run --project tools/SchemaRepair
 
 Requires `appsettings.Development.local.json` with a valid connection string.
 
-### Production build (client)
-
-```powershell
-cd client
-npm run build
-```
-
-### Production deployment
-
-1. Copy and edit production secrets:
-
-```powershell
-copy src\ShoppingList.Api\appsettings.Production.local.json.example src\ShoppingList.Api\appsettings.Production.local.json
-```
-
-Set `ConnectionStrings`, `Jwt:Key`, `Cors:AllowedOrigins`, `App:FrontendBaseUrl`, `AllowedHosts`, and `Email` (SMTP) values.
-
-2. Build and publish the API with `ASPNETCORE_ENVIRONMENT=Production`.
-
-3. Build the client with `VITE_API_URL` set to your API origin (CSP `connect-src` is injected at build time):
-
-```powershell
-cd client
-$env:VITE_API_URL="https://api.your-domain.com"
-npm run build
-```
-
-4. Run dependency audits before deploy:
+### Dependency audit
 
 ```powershell
 .\scripts\audit-deps.ps1
 ```
 
-### CORS
+## Production deployment
 
-When deploying, add your frontend URL to `Cors:AllowedOrigins` and set `App:FrontendBaseUrl` for verification emails.
+1. **Secrets file** (gitignored):
+
+```powershell
+copy src\ShoppingList.Api\appsettings.Production.local.json.example src\ShoppingList.Api\appsettings.Production.local.json
+```
+
+Set at least:
+
+| Setting | Notes |
+|---------|--------|
+| `ConnectionStrings:DefaultConnection` | Production Postgres |
+| `Jwt:Key` | Long random secret (≥ 32 chars) |
+| `Cors:AllowedOrigins` | Real `https://…` frontend origin(s) — not localhost/placeholders |
+| `App:FrontendBaseUrl` | Same frontend origin for email links |
+| `AllowedHosts` | Real API hostname(s) |
+| `Email:*` | SMTP for verification / reset mail |
+| `ForwardedHeaders:KnownProxies` or `KnownNetworks` | Required for correct client IPs **if** behind a reverse proxy / load balancer |
+
+2. **Environment:** `ASPNETCORE_ENVIRONMENT=Production`. The API **refuses to start** if Swagger is enabled or CORS/hosts/frontend URLs look like placeholders, localhost, or non-HTTPS.
+
+3. **Migrations:** apply explicitly in Production (they do **not** auto-run outside Development):
+
+```powershell
+dotnet ef database update --project src/ShoppingList.Infrastructure --startup-project src/ShoppingList.Api
+```
+
+4. **Publish API** and host behind HTTPS (prefer terminating TLS at a reverse proxy, then set KnownProxies).
+
+5. **Build client** with the API origin (injects CSP `connect-src`):
+
+```powershell
+cd client
+$env:VITE_API_URL="https://api.your-real-domain.com"
+npm run build
+```
+
+Serve `client/dist` from your static host or the same reverse proxy. If the browser talks to the API on another origin, that origin must be in `Cors:AllowedOrigins`.
+
+6. Run `.\scripts\audit-deps.ps1` before deploy.
 
 ## Tests
 
@@ -388,16 +427,20 @@ When deploying, add your frontend URL to `Cors:AllowedOrigins` and set `App:Fron
 dotnet test
 ```
 
-Covers ingredient line parsing and recipe content building.
+Includes API and Infrastructure unit tests (hub tracking, OCR/ingredient parsing, recipe content helpers).
 
 ## Troubleshooting
 
 | Problem | Likely cause | Fix |
 |---------|--------------|-----|
 | `relation "shopping_lists" does not exist` | Migrations not applied | `dotnet ef database update` or restart API in Development |
-| `Jwt:Key is not configured` | Missing JWT secret | Set `Jwt:Key` in appsettings or `.local.json` |
-| 401 on API calls | Not signed in or expired session | Sign in again |
+| `Jwt:Key is not configured` / key too short | Missing or weak JWT secret | Set `Jwt:Key` (≥ 32 chars) in `.local.json` |
+| API won't start in Production | Placeholder CORS/hosts/Swagger | Fix `appsettings.Production.local.json` per [Production deployment](#production-deployment) |
+| 403 `Invalid or missing CSRF token` | Missing/stale `X-CSRF` | Ensure client called `/api/auth/csrf` after login; hard-refresh |
+| 401 on API calls | Not signed in or revoked session | Sign in again |
 | OCR upload 503 / no ingredients | Missing tessdata | Run `.\scripts\download-tessdata.ps1` |
-| SignalR disconnected | API not running or auth missing | Ensure API is up and you are logged in |
+| SignalR disconnected / 403 Origin | API down, auth, or CORS origin mismatch | Check API, login, and `Cors:AllowedOrigins` |
+| Rate limits hit everyone equally | Proxy IPs not trusted | Configure `ForwardedHeaders:KnownProxies` |
 | `dotnet run` file lock errors | API already running | Stop existing `ShoppingList.Api` process |
-| Verification link does nothing | Wrong `App:FrontendBaseUrl` | Match your client URL in appsettings |
+| Verification link wrong host | Wrong `App:FrontendBaseUrl` | Match your real client URL |
+| Swagger 404 | Not Development or `Swagger:Enabled` false | Enable only in Development `appsettings` |
