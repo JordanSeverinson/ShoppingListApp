@@ -39,6 +39,7 @@ public class RecipeAccessService(ApplicationDbContext db)
         new(
             recipe.Id,
             recipe.Name,
+            recipe.RecipeType,
             recipe.OwnerId == userId,
             recipe.UpdatedAt ?? recipe.CreatedAt,
             recipe.Ingredients.Count);

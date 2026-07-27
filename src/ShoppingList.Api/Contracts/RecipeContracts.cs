@@ -10,6 +10,7 @@ public record RecipeSummaryResponse(
 public record RecipeSummaryDto(
     Guid Id,
     string Name,
+    string? RecipeType,
     bool IsOwner,
     DateTime? UpdatedAt,
     int IngredientCount);
@@ -25,6 +26,7 @@ public record PendingRecipeShareDto(
 public record RecipeDetailResponse(
     Guid Id,
     string Name,
+    string? RecipeType,
     bool IsOwner,
     RecipeContentDocument Content,
     IReadOnlyList<RecipeIngredientDto> Ingredients,
@@ -32,9 +34,9 @@ public record RecipeDetailResponse(
 
 public record SaveRecipeContentRequest(RecipeContentDocument Content);
 
-public record CreateRecipeRequest(string Name);
+public record CreateRecipeRequest(string Name, string? RecipeType);
 
-public record RenameRecipeRequest(string Name);
+public record UpdateRecipeRequest(string? Name, string? RecipeType);
 
 public record ShareRecipeRequest(IReadOnlyList<Guid> FriendUserIds);
 

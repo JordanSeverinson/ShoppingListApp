@@ -9,7 +9,7 @@ import type {
 
 const DEFAULT_SECTION_TITLE = "Ingredients";
 
-export type RecipeEditorSection = {
+type RecipeEditorSection = {
   key: string;
   title: string;
 };
@@ -18,25 +18,25 @@ function sectionLabel(ingredient: RecipeIngredient): string {
   return ingredient.section?.trim() || DEFAULT_SECTION_TITLE;
 }
 
-export function buildEditorSections(
+function buildEditorSections(
   ingredients: RecipeIngredient[],
 ): RecipeEditorSection[] {
-  const order: string[] = [];
+  const sectionTitles: string[] = [];
   for (const ingredient of [...ingredients].sort(
     (a, b) =>
       sectionLabel(a).localeCompare(sectionLabel(b)) || a.sortOrder - b.sortOrder,
   )) {
     const title = sectionLabel(ingredient);
-    if (!order.includes(title)) {
-      order.push(title);
+    if (!sectionTitles.includes(title)) {
+      sectionTitles.push(title);
     }
   }
 
-  if (order.length === 0) {
+  if (sectionTitles.length === 0) {
     return [{ key: crypto.randomUUID(), title: DEFAULT_SECTION_TITLE }];
   }
 
-  return order.map((title) => ({ key: crypto.randomUUID(), title }));
+  return sectionTitles.map((title) => ({ key: crypto.randomUUID(), title }));
 }
 
 function groupIngredientsBySection(
@@ -100,11 +100,11 @@ export function RecipeSectionsEditor({
       return;
     }
 
-    const next = buildEditorSections(ingredients);
+    const nextSections = buildEditorSections(ingredients);
     setSections((current) => {
       const currentTitles = current.map((section) => section.title);
-      const nextTitles = next.map((section) => section.title);
-      const emptyExtras = current.filter(
+      const nextTitles = nextSections.map((section) => section.title);
+      const emptyExtraSections = current.filter(
         (section) =>
           !nextTitles.includes(section.title) &&
           !ingredients.some((item) => sectionLabel(item) === section.title),
@@ -113,39 +113,41 @@ export function RecipeSectionsEditor({
       if (
         currentTitles.length === nextTitles.length &&
         currentTitles.every((title, index) => title === nextTitles[index]) &&
-        emptyExtras.length === 0
+        emptyExtraSections.length === 0
       ) {
         return current;
       }
 
-      const merged = [...next];
-      for (const extra of emptyExtras) {
-        if (!merged.some((section) => section.title === extra.title)) {
-          merged.push(extra);
+      const mergedSections = [...nextSections];
+      for (const extra of emptyExtraSections) {
+        if (!mergedSections.some((section) => section.title === extra.title)) {
+          mergedSections.push(extra);
         }
       }
-      return merged.length > 0 ? merged : [{ key: crypto.randomUUID(), title: DEFAULT_SECTION_TITLE }];
+      return mergedSections.length > 0
+        ? mergedSections
+        : [{ key: crypto.randomUUID(), title: DEFAULT_SECTION_TITLE }];
     });
     syncedFromIngredients.current = ingredientsSignature;
   }, [ingredients, ingredientsSignature]);
 
-  const grouped = useMemo(
+  const ingredientsBySection = useMemo(
     () => groupIngredientsBySection(ingredients, sections),
     [ingredients, sections],
   );
 
-  function isOpen(key: string, index: number): boolean {
+  function isSectionOpen(key: string, index: number): boolean {
     return openByKey[key] ?? index === 0;
   }
 
-  function toggleOpen(key: string, index: number) {
+  function toggleSectionOpen(key: string, index: number) {
     setOpenByKey((current) => ({
       ...current,
-      [key]: !isOpen(key, index),
+      [key]: !isSectionOpen(key, index),
     }));
   }
 
-  async function commitTitle(
+  async function commitSectionTitle(
     section: RecipeEditorSection,
     previousTitle: string,
     draftTitle: string,
@@ -180,19 +182,19 @@ export function RecipeSectionsEditor({
   }
 
   function handleDeleteOrClearSection(section: RecipeEditorSection) {
-    const sectionIngredients = grouped.get(section.key) ?? [];
-    const ids = sectionIngredients.map((item) => item.id);
+    const sectionIngredients = ingredientsBySection.get(section.key) ?? [];
+    const ingredientIds = sectionIngredients.map((item) => item.id);
 
     if (sections.length === 1) {
-      if (ids.length > 0) {
-        onDeleteSectionIngredients(ids);
+      if (ingredientIds.length > 0) {
+        onDeleteSectionIngredients(ingredientIds);
       }
       setSections([{ key: crypto.randomUUID(), title: DEFAULT_SECTION_TITLE }]);
       return;
     }
 
-    if (ids.length > 0) {
-      onDeleteSectionIngredients(ids);
+    if (ingredientIds.length > 0) {
+      onDeleteSectionIngredients(ingredientIds);
     }
     setSections((current) => current.filter((item) => item.key !== section.key));
   }
@@ -209,19 +211,19 @@ export function RecipeSectionsEditor({
       </div>
 
       {sections.map((section, index) => {
-        const sectionIngredients = grouped.get(section.key) ?? [];
-        const open = isOpen(section.key, index);
-        const isOnly = sections.length === 1;
+        const sectionIngredients = ingredientsBySection.get(section.key) ?? [];
+        const isOpen = isSectionOpen(section.key, index);
+        const isOnlySection = sections.length === 1;
 
         return (
           <SectionCard
             key={section.key}
             section={section}
-            open={open}
-            isOnly={isOnly}
+            isOpen={isOpen}
+            isOnlySection={isOnlySection}
             ingredients={sectionIngredients}
-            onToggle={() => toggleOpen(section.key, index)}
-            onTitleBlur={(previous, draft) => void commitTitle(section, previous, draft)}
+            onToggle={() => toggleSectionOpen(section.key, index)}
+            onTitleBlur={(previous, draft) => void commitSectionTitle(section, previous, draft)}
             onDeleteOrClear={() => handleDeleteOrClearSection(section)}
             onAdd={onAdd}
             onUpdate={onUpdate}
@@ -244,8 +246,8 @@ export function RecipeSectionsEditor({
 
 function SectionCard({
   section,
-  open,
-  isOnly,
+  isOpen,
+  isOnlySection,
   ingredients,
   onToggle,
   onTitleBlur,
@@ -255,8 +257,8 @@ function SectionCard({
   onRemove,
 }: {
   section: RecipeEditorSection;
-  open: boolean;
-  isOnly: boolean;
+  isOpen: boolean;
+  isOnlySection: boolean;
   ingredients: RecipeIngredient[];
   onToggle: () => void;
   onTitleBlur: (previousTitle: string, draftTitle: string) => void;
@@ -290,10 +292,10 @@ function SectionCard({
           type="button"
           onClick={onToggle}
           className="rounded-lg p-1.5 text-muted transition hover:bg-brand-50 hover:text-brand-700"
-          aria-expanded={open}
-          aria-label={open ? "Collapse section" : "Expand section"}
+          aria-expanded={isOpen}
+          aria-label={isOpen ? "Collapse section" : "Expand section"}
         >
-          {open ? (
+          {isOpen ? (
             <ChevronDown className="h-4 w-4" aria-hidden />
           ) : (
             <ChevronRight className="h-4 w-4" aria-hidden />
@@ -323,11 +325,11 @@ function SectionCard({
           onClick={onDeleteOrClear}
           className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted transition hover:bg-red-50 hover:text-red-700"
         >
-          {isOnly ? "Clear" : "Delete"}
+          {isOnlySection ? "Clear" : "Delete"}
         </button>
       </div>
 
-      {open && (
+      {isOpen && (
         <div className="space-y-3 p-3 sm:p-4">
           <div className="hidden gap-2 px-1 text-xs font-medium uppercase tracking-wide text-muted sm:grid sm:grid-cols-[5.5rem_minmax(0,1fr)_8.5rem_4.5rem]">
             <span>Quantity</span>
@@ -385,7 +387,7 @@ function EditableIngredientRow({
     setCategory(ingredient.category || "Other");
   }, [ingredient.id, ingredient.quantity, ingredient.name, ingredient.category]);
 
-  function scheduleSave(next: {
+  function scheduleSave(draftFields: {
     quantity: string;
     name: string;
     category: string;
@@ -395,12 +397,16 @@ function EditableIngredientRow({
     }
 
     saveTimer.current = window.setTimeout(() => {
-      void persist(next);
+      void persist(draftFields);
     }, 400);
   }
 
-  async function persist(next: { quantity: string; name: string; category: string }) {
-    const trimmedName = next.name.trim();
+  async function persist(draftFields: {
+    quantity: string;
+    name: string;
+    category: string;
+  }) {
+    const trimmedName = draftFields.name.trim();
     if (!trimmedName) {
       setError("Ingredient name is required.");
       return;
@@ -410,8 +416,8 @@ function EditableIngredientRow({
     try {
       await onUpdate(ingredient.id, {
         name: trimmedName,
-        quantity: next.quantity.trim() || null,
-        category: next.category,
+        quantity: draftFields.quantity.trim() || null,
+        category: draftFields.category,
         section: sectionTitle.trim() || DEFAULT_SECTION_TITLE,
         sortOrder: ingredient.sortOrder,
       });

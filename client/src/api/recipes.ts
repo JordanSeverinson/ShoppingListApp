@@ -14,10 +14,13 @@ export function fetchMyRecipes(): Promise<RecipeSummaryResponse> {
   return apiRequest<RecipeSummaryResponse>("/api/recipes");
 }
 
-export function createRecipe(name: string): Promise<RecipeSummary> {
+export function createRecipe(
+  name: string,
+  recipeType?: string | null,
+): Promise<RecipeSummary> {
   return apiRequest<RecipeSummary>("/api/recipes", {
     method: "POST",
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, recipeType: recipeType ?? null }),
   });
 }
 
@@ -47,11 +50,18 @@ export function fetchRecipe(recipeId: string): Promise<RecipeDetail> {
   return apiRequest<RecipeDetail>(`/api/recipes/${recipeId}`);
 }
 
-export function renameRecipe(recipeId: string, name: string): Promise<RecipeSummary> {
+export function updateRecipe(
+  recipeId: string,
+  payload: { name?: string; recipeType?: string | null },
+): Promise<RecipeSummary> {
   return apiRequest<RecipeSummary>(`/api/recipes/${recipeId}`, {
     method: "PATCH",
-    body: JSON.stringify({ name }),
+    body: JSON.stringify(payload),
   });
+}
+
+export function renameRecipe(recipeId: string, name: string): Promise<RecipeSummary> {
+  return updateRecipe(recipeId, { name });
 }
 
 export function deleteRecipe(recipeId: string): Promise<void> {

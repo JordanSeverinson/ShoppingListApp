@@ -7,6 +7,7 @@ namespace ShoppingList.Domain.Entities;
 public class Recipe : AuditableEntity
 {
     public string Name { get; set; } = string.Empty;
+    public string? RecipeType { get; set; }
     public Guid OwnerId { get; set; }
     public RecipeContentDocument Content { get; set; } = new();
 

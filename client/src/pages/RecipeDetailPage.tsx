@@ -9,6 +9,7 @@ import { RecipeSectionsEditor } from "../components/RecipeSectionsEditor";
 import { RecipeStepsEditor } from "../components/RecipeStepsEditor";
 import { ShareWithFriendsModal } from "../components/ShareWithFriendsModal";
 import { enqueueDelete, flushDeletesNow, hasPendingDeletes } from "../lib/deleteQueue";
+import { RECIPE_TYPES, type RecipeType } from "../lib/recipeTypes";
 import type {
   CreateRecipeIngredientPayload,
   RecipeDetail,
@@ -28,20 +29,26 @@ function sectionLabel(ingredient: RecipeIngredient): string {
   return ingredient.section?.trim() || "Ingredients";
 }
 
+function cookingStepsFromRecipe(recipe: RecipeDetail): string[] {
+  return recipe.content.recipe.cookingSteps.length
+    ? recipe.content.recipe.cookingSteps
+    : recipe.steps.map((step) => step.text);
+}
+
 export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
   const navigate = useNavigate();
   const { recipeId } = useParams<{ recipeId: string }>();
-  const [detail, setDetail] = useState<RecipeDetail | null>(null);
+  const [recipe, setRecipe] = useState<RecipeDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [shareOpen, setShareOpen] = useState(false);
-  const [shareMessage, setShareMessage] = useState<string | null>(null);
-  const deleteKey = recipeId ? `recipe:${recipeId}` : null;
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [shareStatusMessage, setShareStatusMessage] = useState<string | null>(null);
+  const deleteQueueKey = recipeId ? `recipe:${recipeId}` : null;
 
   const patchIngredients = useCallback(
     (mutate: (ingredients: RecipeIngredient[]) => RecipeIngredient[]) => {
-      setDetail((current) =>
-        current ? { ...current, ingredients: mutate(current.ingredients) } : current,
+      setRecipe((previous) =>
+        previous ? { ...previous, ingredients: mutate(previous.ingredients) } : previous,
       );
     },
     [],
@@ -58,8 +65,8 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
     }
     setError(null);
     try {
-      const data = await recipesApi.fetchRecipe(recipeId);
-      setDetail(data);
+      const fetchedRecipe = await recipesApi.fetchRecipe(recipeId);
+      setRecipe(fetchedRecipe);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load recipe");
     } finally {
@@ -74,16 +81,16 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
   }, [refresh]);
 
   useEffect(() => {
-    if (!shareMessage) {
+    if (!shareStatusMessage) {
       return;
     }
 
     const timeoutId = window.setTimeout(() => {
-      setShareMessage(null);
+      setShareStatusMessage(null);
     }, 3000);
 
     return () => window.clearTimeout(timeoutId);
-  }, [shareMessage]);
+  }, [shareStatusMessage]);
 
   const readOnlyRef = useRef(readOnly);
   useEffect(() => {
@@ -110,22 +117,16 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
   );
 
   useEffect(() => {
-    if (!deleteKey || readOnly) {
+    if (!deleteQueueKey || readOnly) {
       return;
     }
 
     return () => {
-      void flushDeletesNow(deleteKey, { keepalive: true });
+      void flushDeletesNow(deleteQueueKey, { keepalive: true });
     };
-  }, [deleteKey, readOnly]);
+  }, [deleteQueueKey, readOnly]);
 
-  function stepTextsFromDetail(recipe: RecipeDetail): string[] {
-    return recipe.content.recipe.cookingSteps.length
-      ? recipe.content.recipe.cookingSteps
-      : recipe.steps.map((step) => step.text);
-  }
-
-  const syncContent = useCallback(
+  const syncRecipeContent = useCallback(
     async (ingredients: RecipeIngredient[], cookingSteps: string[]) => {
       if (!recipeId) {
         return;
@@ -133,8 +134,10 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
 
       const content = buildRecipeContentDocument(ingredients, cookingSteps);
       try {
-        const saved = await recipesApi.saveRecipeContent(recipeId, content);
-        setDetail((current) => (current ? { ...current, content: saved } : current));
+        const savedContent = await recipesApi.saveRecipeContent(recipeId, content);
+        setRecipe((previous) =>
+          previous ? { ...previous, content: savedContent } : previous,
+        );
       } catch {
         // Ingredient edits already saved; content sync can retry on next mutation.
       }
@@ -143,17 +146,20 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
   );
 
   async function leaveEditPage(destination: "view" | "list" = "view") {
-    if (deleteKey && hasPendingDeletes(deleteKey)) {
-      await flushDeletesNow(deleteKey);
+    if (deleteQueueKey && hasPendingDeletes(deleteQueueKey)) {
+      await flushDeletesNow(deleteQueueKey);
     }
 
     if (recipeId) {
       try {
-        const data = await recipesApi.fetchRecipe(recipeId);
-        const cookingSteps = stepTextsFromDetail(data);
-        const content = buildRecipeContentDocument(data.ingredients, cookingSteps);
-        const saved = await recipesApi.saveRecipeContent(recipeId, content);
-        setDetail({ ...data, content: saved });
+        const fetchedRecipe = await recipesApi.fetchRecipe(recipeId);
+        const cookingSteps = cookingStepsFromRecipe(fetchedRecipe);
+        const content = buildRecipeContentDocument(
+          fetchedRecipe.ingredients,
+          cookingSteps,
+        );
+        const savedContent = await recipesApi.saveRecipeContent(recipeId, content);
+        setRecipe({ ...fetchedRecipe, content: savedContent });
       } catch {
         await refresh({ showLoading: false });
       }
@@ -167,25 +173,35 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
       return;
     }
     const updated = await recipesApi.renameRecipe(recipeId, name);
-    setDetail((current) => (current ? { ...current, name: updated.name } : current));
+    setRecipe((previous) => (previous ? { ...previous, name: updated.name } : previous));
+  }
+
+  async function handleRecipeTypeChange(recipeType: RecipeType) {
+    if (!recipeId) {
+      return;
+    }
+    const updated = await recipesApi.updateRecipe(recipeId, { recipeType });
+    setRecipe((previous) =>
+      previous ? { ...previous, recipeType: updated.recipeType } : previous,
+    );
   }
 
   async function handleAddIngredient(payload: CreateRecipeIngredientPayload) {
     if (!recipeId) {
       return;
     }
-    const created = await recipesApi.createRecipeIngredient(recipeId, payload);
+    const createdIngredient = await recipesApi.createRecipeIngredient(recipeId, payload);
     let cookingSteps: string[] = [];
     let nextIngredients: RecipeIngredient[] = [];
-    setDetail((current) => {
-      if (!current) {
-        return current;
+    setRecipe((previous) => {
+      if (!previous) {
+        return previous;
       }
-      cookingSteps = stepTextsFromDetail(current);
-      nextIngredients = sortIngredients([...current.ingredients, created]);
-      return { ...current, ingredients: nextIngredients };
+      cookingSteps = cookingStepsFromRecipe(previous);
+      nextIngredients = sortIngredients([...previous.ingredients, createdIngredient]);
+      return { ...previous, ingredients: nextIngredients };
     });
-    await syncContent(nextIngredients, cookingSteps);
+    await syncRecipeContent(nextIngredients, cookingSteps);
   }
 
   async function handleUpdateIngredient(
@@ -195,20 +211,26 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
     if (!recipeId) {
       return;
     }
-    const updated = await recipesApi.updateRecipeIngredient(recipeId, ingredientId, payload);
+    const updatedIngredient = await recipesApi.updateRecipeIngredient(
+      recipeId,
+      ingredientId,
+      payload,
+    );
     let cookingSteps: string[] = [];
     let nextIngredients: RecipeIngredient[] = [];
-    setDetail((current) => {
-      if (!current) {
-        return current;
+    setRecipe((previous) => {
+      if (!previous) {
+        return previous;
       }
-      cookingSteps = stepTextsFromDetail(current);
+      cookingSteps = cookingStepsFromRecipe(previous);
       nextIngredients = sortIngredients(
-        current.ingredients.map((item) => (item.id === ingredientId ? updated : item)),
+        previous.ingredients.map((item) =>
+          item.id === ingredientId ? updatedIngredient : item,
+        ),
       );
-      return { ...current, ingredients: nextIngredients };
+      return { ...previous, ingredients: nextIngredients };
     });
-    await syncContent(nextIngredients, cookingSteps);
+    await syncRecipeContent(nextIngredients, cookingSteps);
   }
 
   async function handleRenameSection(from: string, to: string) {
@@ -218,40 +240,40 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
     await recipesApi.renameRecipeSection(recipeId, from, to);
     let cookingSteps: string[] = [];
     let nextIngredients: RecipeIngredient[] = [];
-    setDetail((current) => {
-      if (!current) {
-        return current;
+    setRecipe((previous) => {
+      if (!previous) {
+        return previous;
       }
-      cookingSteps = stepTextsFromDetail(current);
+      cookingSteps = cookingStepsFromRecipe(previous);
       nextIngredients = sortIngredients(
-        current.ingredients.map((item) =>
+        previous.ingredients.map((item) =>
           sectionLabel(item) === from ? { ...item, section: to } : item,
         ),
       );
-      return { ...current, ingredients: nextIngredients };
+      return { ...previous, ingredients: nextIngredients };
     });
-    await syncContent(nextIngredients, cookingSteps);
+    await syncRecipeContent(nextIngredients, cookingSteps);
   }
 
   async function handleSaveSteps(steps: string[]) {
     if (!recipeId) {
       return;
     }
-    const saved = await recipesApi.replaceRecipeSteps(recipeId, steps);
+    const savedSteps = await recipesApi.replaceRecipeSteps(recipeId, steps);
     let ingredients: RecipeIngredient[] = [];
-    setDetail((current) => {
-      if (!current) {
-        return current;
+    setRecipe((previous) => {
+      if (!previous) {
+        return previous;
       }
-      ingredients = current.ingredients;
-      return { ...current, steps: saved };
+      ingredients = previous.ingredients;
+      return { ...previous, steps: savedSteps };
     });
-    await syncContent(ingredients, steps);
+    await syncRecipeContent(ingredients, steps);
   }
 
   const handleRemoveIngredient = useCallback(
     (ingredientId: string) => {
-      if (!deleteKey) {
+      if (!deleteQueueKey) {
         return;
       }
 
@@ -261,11 +283,11 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
           return ingredients;
         }
 
-        enqueueDelete(deleteKey, removed, flushRecipeDeletes, restoreIngredients);
+        enqueueDelete(deleteQueueKey, removed, flushRecipeDeletes, restoreIngredients);
         return ingredients.filter((item) => item.id !== ingredientId);
       });
     },
-    [deleteKey, flushRecipeDeletes, patchIngredients, restoreIngredients],
+    [deleteQueueKey, flushRecipeDeletes, patchIngredients, restoreIngredients],
   );
 
   const handleDeleteSectionIngredients = useCallback(
@@ -285,16 +307,11 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
     );
   }
 
-  if (!readOnly && detail && !detail.isOwner) {
+  if (!readOnly && recipe && !recipe.isOwner) {
     return <Navigate to={`/recipes/${recipeId}`} replace />;
   }
 
-  const stepTexts =
-    detail?.content.recipe.cookingSteps.length
-      ? detail.content.recipe.cookingSteps
-      : (detail?.steps.map((step) => step.text) ?? []);
-
-  const backLabel = "All recipes";
+  const cookingSteps = recipe ? cookingStepsFromRecipe(recipe) : [];
 
   return (
     <div className="mx-auto min-h-screen max-w-2xl px-4 py-8 sm:px-6 sm:py-12">
@@ -310,28 +327,28 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
         className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-muted hover:text-brand-700"
       >
         <ArrowLeft className="h-4 w-4" aria-hidden />
-        {backLabel}
+        All recipes
       </button>
 
-      {error && detail && (
+      {error && recipe && (
         <p className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
         </p>
       )}
 
-      {loading && !detail ? (
+      {loading && !recipe ? (
         <p className="text-center text-muted">Loading recipe…</p>
-      ) : error && !detail ? (
+      ) : error && !recipe ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-6 text-center text-red-700">
           {error}
         </div>
-      ) : detail ? (
+      ) : recipe ? (
         <>
           <header className="mb-8">
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <div className="inline-flex items-center gap-2 rounded-full bg-brand-100 px-3 py-1 text-xs font-medium text-brand-700">
                 <ChefHat className="h-3.5 w-3.5" aria-hidden />
-                {detail.isOwner ? "Your Recipe" : "Shared Recipe"}
+                {recipe.isOwner ? "Your Recipe" : "Shared Recipe"}
               </div>
               {!readOnly && (
                 <button
@@ -343,7 +360,7 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
                   View recipe
                 </button>
               )}
-              {readOnly && detail.isOwner && (
+              {readOnly && recipe.isOwner && (
                 <Link
                   to={`/recipes/${recipeId}/edit`}
                   className="inline-flex items-center gap-2 rounded-full border border-border bg-white px-4 py-1.5 text-xs font-semibold text-brand-700 transition hover:border-brand-300 hover:bg-brand-50"
@@ -355,17 +372,44 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
             </div>
 
             <EditableListName
-              name={detail.name}
+              name={recipe.name}
               size="lg"
               readOnly={readOnly}
               onSave={handleRename}
             />
 
-            {detail.isOwner && (
+            {readOnly ? (
+              recipe.recipeType ? (
+                <p className="mt-3 text-sm font-medium text-muted">{recipe.recipeType}</p>
+              ) : null
+            ) : (
+              <label className="mt-4 block max-w-xs">
+                <span className="mb-1.5 block text-sm font-medium text-ink">Type</span>
+                <select
+                  value={recipe.recipeType ?? ""}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    if (value) {
+                      void handleRecipeTypeChange(value as RecipeType);
+                    }
+                  }}
+                  className="w-full rounded-xl border border-border bg-white px-4 py-2.5 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
+                >
+                  {!recipe.recipeType && <option value="">Select a type</option>}
+                  {RECIPE_TYPES.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+            {recipe.isOwner && (
               <div className="mt-4">
                 <button
                   type="button"
-                  onClick={() => setShareOpen(true)}
+                  onClick={() => setShareModalOpen(true)}
                   className="inline-flex items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-4 py-2 text-sm font-medium text-brand-800 transition hover:border-brand-300 hover:bg-brand-100"
                 >
                   <UserPlus className="h-4 w-4" aria-hidden />
@@ -374,9 +418,9 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
               </div>
             )}
 
-            {shareMessage && (
+            {shareStatusMessage && (
               <p className="mt-3 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-800">
-                {shareMessage}
+                {shareStatusMessage}
               </p>
             )}
           </header>
@@ -384,34 +428,34 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
           <div className="space-y-8">
             {readOnly ? (
               <RecipeReadOnlyView
-                recipeName={detail.name}
-                content={detail.content}
-                ingredients={detail.ingredients}
-                steps={stepTexts}
+                recipeName={recipe.name}
+                content={recipe.content}
+                ingredients={recipe.ingredients}
+                steps={cookingSteps}
               />
             ) : (
               <>
                 <RecipeImageUploader recipeId={recipeId} onImported={() => void refresh()} />
                 <RecipeSectionsEditor
-                  ingredients={detail.ingredients}
+                  ingredients={recipe.ingredients}
                   onAdd={handleAddIngredient}
                   onUpdate={handleUpdateIngredient}
                   onRemove={handleRemoveIngredient}
                   onRenameSection={handleRenameSection}
                   onDeleteSectionIngredients={handleDeleteSectionIngredients}
                 />
-                <RecipeStepsEditor steps={stepTexts} onSave={handleSaveSteps} />
+                <RecipeStepsEditor steps={cookingSteps} onSave={handleSaveSteps} />
               </>
             )}
           </div>
 
           {recipeId && (
             <ShareWithFriendsModal
-              open={shareOpen}
-              itemName={detail.name}
+              open={shareModalOpen}
+              itemName={recipe.name}
               itemLabel="recipe"
-              onClose={() => setShareOpen(false)}
-              onShared={(message) => setShareMessage(message)}
+              onClose={() => setShareModalOpen(false)}
+              onShared={(message) => setShareStatusMessage(message)}
               onShare={(friendUserIds) => recipesApi.shareRecipe(recipeId, friendUserIds)}
             />
           )}

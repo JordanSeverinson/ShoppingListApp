@@ -13,7 +13,7 @@ export interface RecipeContentDocument {
   recipe: RecipeContentRoot;
 }
 
-export function getRecipeSubCategories(
+function getRecipeSubCategories(
   content: RecipeContentDocument | null | undefined,
 ): RecipeSubCategoryBlock[] {
   if (!content?.recipe) {
@@ -68,13 +68,13 @@ function isSubCategoryBlock(value: unknown): value is RecipeSubCategoryBlock {
   );
 }
 
-export function formatIngredientLine(ingredient: RecipeIngredient): string {
+function formatIngredientLine(ingredient: RecipeIngredient): string {
   const name = ingredient.name.trim();
   const quantity = ingredient.quantity?.trim();
   return quantity ? `${quantity} ${name}` : name;
 }
 
-export function buildSubCategoriesFromIngredients(
+function buildSubCategoriesFromIngredients(
   ingredients: RecipeIngredient[],
 ): RecipeSubCategoryBlock[] {
   if (ingredients.length === 0) {
@@ -196,6 +196,7 @@ export interface RecipeStep {
 export interface RecipeSummary {
   id: string;
   name: string;
+  recipeType: string | null;
   isOwner: boolean;
   ingredientCount: number;
   updatedAt?: string;
@@ -218,6 +219,7 @@ export interface RecipeSummaryResponse {
 export interface RecipeDetail {
   id: string;
   name: string;
+  recipeType: string | null;
   isOwner: boolean;
   content: RecipeContentDocument;
   ingredients: RecipeIngredient[];

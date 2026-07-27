@@ -10,21 +10,21 @@ function AutoResizeTextarea({
   onChange: (value: string) => void;
   placeholder?: string;
 }) {
-  const ref = useRef<HTMLTextAreaElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) {
+    const textarea = textareaRef.current;
+    if (!textarea) {
       return;
     }
 
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
+    textarea.style.height = "auto";
+    textarea.style.height = `${textarea.scrollHeight}px`;
   }, [value]);
 
   return (
     <textarea
-      ref={ref}
+      ref={textareaRef}
       value={value}
       onChange={(event) => onChange(event.target.value)}
       rows={1}
@@ -37,65 +37,41 @@ function AutoResizeTextarea({
 export function RecipeStepsEditor({
   steps,
   onSave,
-  readOnly = false,
 }: {
   steps: string[];
   onSave?: (steps: string[]) => Promise<void>;
-  readOnly?: boolean;
 }) {
-  const [draft, setDraft] = useState<string[]>(steps.length > 0 ? steps : [""]);
+  const [draftSteps, setDraftSteps] = useState<string[]>(steps.length > 0 ? steps : [""]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    setDraft(steps.length > 0 ? steps : [""]);
+    setDraftSteps(steps.length > 0 ? steps : [""]);
   }, [steps]);
 
-  if (readOnly) {
-    return (
-      <section className="rounded-2xl border border-border bg-white p-4 shadow-sm">
-        <h2 className="font-semibold text-ink">Cooking Steps</h2>
-        {steps.length === 0 ? (
-          <p className="mt-3 text-sm text-muted">No cooking steps for this recipe yet.</p>
-        ) : (
-          <ol className="mt-4 space-y-4">
-            {steps.map((step, index) => (
-              <li key={index} className="flex items-start gap-3">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
-                  {index + 1}
-                </span>
-                <p className="pt-0.5 text-ink">{step}</p>
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
-    );
-  }
-
   function updateStep(index: number, value: string) {
-    setDraft((current) => current.map((step, i) => (i === index ? value : step)));
+    setDraftSteps((current) => current.map((step, i) => (i === index ? value : step)));
     setSaved(false);
   }
 
   function addStep() {
-    setDraft((current) => [...current, ""]);
+    setDraftSteps((current) => [...current, ""]);
     setSaved(false);
   }
 
   function removeStep(index: number) {
-    setDraft((current) => current.filter((_, i) => i !== index));
+    setDraftSteps((current) => current.filter((_, i) => i !== index));
     setSaved(false);
   }
 
   async function handleSave() {
-    const cleaned = draft.map((step) => step.trim()).filter((step) => step.length > 0);
+    const trimmedSteps = draftSteps.map((step) => step.trim()).filter((step) => step.length > 0);
     setSaving(true);
     setError(null);
     try {
-      await onSave?.(cleaned);
-      setDraft(cleaned.length > 0 ? cleaned : [""]);
+      await onSave?.(trimmedSteps);
+      setDraftSteps(trimmedSteps.length > 0 ? trimmedSteps : [""]);
       setSaved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save steps");
@@ -123,7 +99,7 @@ export function RecipeStepsEditor({
       </div>
 
       <ol className="space-y-3">
-        {draft.map((step, index) => (
+        {draftSteps.map((step, index) => (
           <li key={index} className="flex items-start gap-3">
             <span className="mt-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
               {index + 1}

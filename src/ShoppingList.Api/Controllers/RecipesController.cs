@@ -78,6 +78,8 @@ public class RecipesController(
 
                 r.Name,
 
+                r.RecipeType,
+
                 r.OwnerId == userId,
 
                 r.UpdatedAt ?? r.CreatedAt,
@@ -114,6 +116,16 @@ public class RecipesController(
 
         var name = string.IsNullOrWhiteSpace(request.Name) ? "New recipe" : request.Name.Trim();
 
+        var recipeType = RecipeTypes.Normalize(request.RecipeType);
+
+        if (!string.IsNullOrWhiteSpace(request.RecipeType) && recipeType is null)
+
+        {
+
+            return BadRequest(new { error = "Recipe type must be Main Course, Side Dish, Snack, Dessert, or Drink." });
+
+        }
+
 
 
         var recipe = new Recipe
@@ -123,6 +135,8 @@ public class RecipesController(
             Id = Guid.NewGuid(),
 
             Name = name,
+
+            RecipeType = recipeType,
 
             OwnerId = userId,
 
@@ -320,6 +334,8 @@ public class RecipesController(
 
             recipe.Name,
 
+            recipe.RecipeType,
+
             recipe.OwnerId == userId,
 
             RecipeAccessService.ResolveContent(recipe),
@@ -336,21 +352,65 @@ public class RecipesController(
 
     [ProducesResponseType(typeof(RecipeSummaryDto), StatusCodes.Status200OK)]
 
-    public async Task<ActionResult<RecipeSummaryDto>> RenameRecipe(
+    public async Task<ActionResult<RecipeSummaryDto>> UpdateRecipe(
 
         Guid recipeId,
 
-        [FromBody] RenameRecipeRequest request,
+        [FromBody] UpdateRecipeRequest request,
 
         CancellationToken cancellationToken)
 
     {
 
-        if (string.IsNullOrWhiteSpace(request.Name))
+        if (request.Name is null && request.RecipeType is null)
+
+        {
+
+            return BadRequest(new { error = "Provide a recipe name and/or recipe type to update." });
+
+        }
+
+
+
+        if (request.Name is not null && string.IsNullOrWhiteSpace(request.Name))
 
         {
 
             return BadRequest(new { error = "Recipe name is required." });
+
+        }
+
+
+
+        string? normalizedType = null;
+
+        if (request.RecipeType is not null)
+
+        {
+
+            if (string.IsNullOrWhiteSpace(request.RecipeType))
+
+            {
+
+                normalizedType = null;
+
+            }
+
+            else
+
+            {
+
+                normalizedType = RecipeTypes.Normalize(request.RecipeType);
+
+                if (normalizedType is null)
+
+                {
+
+                    return BadRequest(new { error = "Recipe type must be Main Course, Side Dish, Snack, Dessert, or Drink." });
+
+                }
+
+            }
 
         }
 
@@ -384,7 +444,25 @@ public class RecipesController(
 
 
 
-        recipe.Name = request.Name.Trim();
+        if (request.Name is not null)
+
+        {
+
+            recipe.Name = request.Name.Trim();
+
+        }
+
+
+
+        if (request.RecipeType is not null)
+
+        {
+
+            recipe.RecipeType = normalizedType;
+
+        }
+
+
 
         recipe.UpdatedAt = DateTime.UtcNow;
 
