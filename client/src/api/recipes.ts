@@ -90,6 +90,16 @@ export function updateRecipeIngredient(
   });
 }
 
+export function reorderRecipeIngredients(
+  recipeId: string,
+  ingredientIds: string[],
+): Promise<import("../types/recipe").RecipeIngredient[]> {
+  return apiRequest(`/api/recipes/${recipeId}/ingredients/reorder`, {
+    method: "POST",
+    body: JSON.stringify({ ingredientIds }),
+  });
+}
+
 export function renameRecipeSection(
   recipeId: string,
   from: string,

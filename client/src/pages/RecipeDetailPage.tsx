@@ -20,10 +20,7 @@ import type {
 import { buildRecipeContentDocument } from "../types/recipe";
 
 function sortIngredients(ingredients: RecipeIngredient[]): RecipeIngredient[] {
-  return [...ingredients].sort(
-    (a, b) =>
-      (a.section ?? "").localeCompare(b.section ?? "") || a.sortOrder - b.sortOrder,
-  );
+  return [...ingredients].sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
 function cookingStepsFromRecipe(recipe: RecipeDetail): string[] {
@@ -228,6 +225,42 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
       return { ...previous, ingredients: nextIngredients };
     });
     await syncRecipeContent(nextIngredients, cookingSteps);
+  }
+
+  async function handleReorderIngredients(orderedIds: string[]) {
+    if (!recipeId || !recipe) {
+      return;
+    }
+
+    const previousIngredients = recipe.ingredients;
+    const cookingSteps = cookingStepsFromRecipe(recipe);
+    const byId = new Map(previousIngredients.map((item) => [item.id, item]));
+    const ordered = orderedIds
+      .map((id) => byId.get(id))
+      .filter((item): item is RecipeIngredient => Boolean(item));
+    const remaining = previousIngredients.filter((item) => !orderedIds.includes(item.id));
+    const optimistic = [...ordered, ...remaining].map((item, index) => ({
+      ...item,
+      sortOrder: index + 1,
+    }));
+
+    setRecipe((previous) =>
+      previous ? { ...previous, ingredients: optimistic } : previous,
+    );
+
+    try {
+      const saved = await recipesApi.reorderRecipeIngredients(recipeId, orderedIds);
+      const nextIngredients = sortIngredients(saved);
+      setRecipe((previous) =>
+        previous ? { ...previous, ingredients: nextIngredients } : previous,
+      );
+      await syncRecipeContent(nextIngredients, cookingSteps);
+    } catch (err) {
+      setRecipe((previous) =>
+        previous ? { ...previous, ingredients: previousIngredients } : previous,
+      );
+      throw err;
+    }
   }
 
   async function handleRenameSection(from: string, to: string) {
@@ -440,6 +473,7 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
                   onRemove={handleRemoveIngredient}
                   onRenameSection={handleRenameSection}
                   onDeleteSectionIngredients={handleDeleteSectionIngredients}
+                  onReorder={handleReorderIngredients}
                 />
                 <RecipeStepsEditor steps={cookingSteps} onSave={handleSaveSteps} />
               </>

@@ -27,8 +27,7 @@ public static class RecipeContentBuilder
         IEnumerable<RecipeStep> steps)
     {
         var ingredientDtos = ingredients
-            .OrderBy(i => i.Section)
-            .ThenBy(i => i.SortOrder)
+            .OrderBy(i => i.SortOrder)
             .Select(i => new ParsedIngredientDto(
                 i.Name,
                 i.Quantity ?? string.Empty,

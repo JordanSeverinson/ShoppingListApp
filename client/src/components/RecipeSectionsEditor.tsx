@@ -1,5 +1,5 @@
-import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, ChevronRight, ChevronUp, GripVertical, Plus, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { CATEGORIES, suggestCategory } from "../lib/categories";
 import { DEFAULT_SECTION_TITLE, isDefaultSectionTitle, sectionLabelFromIngredient, toPersistedSection } from "../lib/recipeSections";
 import type {
@@ -18,9 +18,7 @@ function buildEditorSections(
 ): RecipeEditorSection[] {
   const sectionTitles: string[] = [];
   for (const ingredient of [...ingredients].sort(
-    (a, b) =>
-      sectionLabelFromIngredient(a).localeCompare(sectionLabelFromIngredient(b)) ||
-      a.sortOrder - b.sortOrder,
+    (a, b) => a.sortOrder - b.sortOrder,
   )) {
     const title = sectionLabelFromIngredient(ingredient);
     if (!sectionTitles.includes(title)) {
@@ -59,6 +57,23 @@ function groupIngredientsBySection(
   return groups;
 }
 
+function moveItem<T>(items: T[], fromIndex: number, toIndex: number): T[] {
+  if (
+    fromIndex === toIndex
+    || fromIndex < 0
+    || toIndex < 0
+    || fromIndex >= items.length
+    || toIndex >= items.length
+  ) {
+    return items;
+  }
+
+  const next = [...items];
+  const [item] = next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, item);
+  return next;
+}
+
 type Props = {
   ingredients: RecipeIngredient[];
   onAdd: (payload: CreateRecipeIngredientPayload) => Promise<void>;
@@ -66,6 +81,7 @@ type Props = {
   onRemove: (ingredientId: string) => void;
   onRenameSection: (from: string, to: string) => Promise<void>;
   onDeleteSectionIngredients: (ingredientIds: string[]) => void;
+  onReorder: (orderedIds: string[]) => Promise<void>;
 };
 
 export function RecipeSectionsEditor({
@@ -75,11 +91,13 @@ export function RecipeSectionsEditor({
   onRemove,
   onRenameSection,
   onDeleteSectionIngredients,
+  onReorder,
 }: Props) {
   const [sections, setSections] = useState<RecipeEditorSection[]>(() =>
     buildEditorSections(ingredients),
   );
   const [openByKey, setOpenByKey] = useState<Record<string, boolean>>({});
+  const [reorderError, setReorderError] = useState<string | null>(null);
   const syncedFromIngredients = useRef<string>("");
 
   const ingredientsSignature = useMemo(
@@ -196,6 +214,27 @@ export function RecipeSectionsEditor({
     setSections((current) => current.filter((item) => item.key !== section.key));
   }
 
+  async function handleMoveIngredient(sectionKey: string, fromIndex: number, toIndex: number) {
+    const sectionIngredients = ingredientsBySection.get(sectionKey) ?? [];
+    const nextSectionIngredients = moveItem(sectionIngredients, fromIndex, toIndex);
+    if (nextSectionIngredients === sectionIngredients) {
+      return;
+    }
+
+    const orderedIds = sections.flatMap((section) =>
+      (section.key === sectionKey
+        ? nextSectionIngredients
+        : (ingredientsBySection.get(section.key) ?? [])
+      ).map((item) => item.id),
+    );
+    try {
+      await onReorder(orderedIds);
+      setReorderError(null);
+    } catch (err) {
+      setReorderError(err instanceof Error ? err.message : "Could not reorder ingredients");
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
@@ -206,6 +245,12 @@ export function RecipeSectionsEditor({
           {ingredients.length} item{ingredients.length === 1 ? "" : "s"}
         </p>
       </div>
+
+      {reorderError && (
+        <p className="text-sm text-red-600" role="alert">
+          {reorderError}
+        </p>
+      )}
 
       {sections.map((section, index) => {
         const sectionIngredients = ingredientsBySection.get(section.key) ?? [];
@@ -225,6 +270,7 @@ export function RecipeSectionsEditor({
             onAdd={onAdd}
             onUpdate={onUpdate}
             onRemove={onRemove}
+            onMove={(fromIndex, toIndex) => void handleMoveIngredient(section.key, fromIndex, toIndex)}
           />
         );
       })}
@@ -252,6 +298,7 @@ function SectionCard({
   onAdd,
   onUpdate,
   onRemove,
+  onMove,
 }: {
   section: RecipeEditorSection;
   isOpen: boolean;
@@ -263,6 +310,7 @@ function SectionCard({
   onAdd: (payload: CreateRecipeIngredientPayload) => Promise<void>;
   onUpdate: (ingredientId: string, payload: UpdateRecipeIngredientPayload) => Promise<void>;
   onRemove: (ingredientId: string) => void;
+  onMove: (fromIndex: number, toIndex: number) => void;
 }) {
   const [draftTitle, setDraftTitle] = useState(section.title);
   const titleBeforeEdit = useRef(section.title);
@@ -328,7 +376,8 @@ function SectionCard({
 
       {isOpen && (
         <div className="space-y-3 p-3 sm:p-4">
-          <div className="hidden gap-2 px-1 text-xs font-medium uppercase tracking-wide text-muted sm:grid sm:grid-cols-[5.5rem_minmax(0,1fr)_8.5rem_4.5rem]">
+          <div className="hidden gap-2 px-1 text-xs font-medium uppercase tracking-wide text-muted sm:grid sm:grid-cols-[1.75rem_5.5rem_minmax(0,1fr)_8.5rem_auto]">
+            <span className="sr-only">Reorder</span>
             <span>Quantity</span>
             <span>Ingredient</span>
             <span>Category</span>
@@ -339,13 +388,19 @@ function SectionCard({
             <p className="px-1 text-sm text-muted">No ingredients yet. Add some below.</p>
           ) : (
             <ul className="space-y-2">
-              {ingredients.map((ingredient) => (
+              {ingredients.map((ingredient, index) => (
                 <EditableIngredientRow
                   key={ingredient.id}
                   ingredient={ingredient}
                   sectionTitle={section.title}
+                  index={index}
+                  isFirst={index === 0}
+                  isLast={index === ingredients.length - 1}
                   onUpdate={onUpdate}
                   onRemove={onRemove}
+                  onMoveUp={() => onMove(index, index - 1)}
+                  onMoveDown={() => onMove(index, index + 1)}
+                  onDropOn={(fromIndex) => onMove(fromIndex, index)}
                 />
               ))}
             </ul>
@@ -364,18 +419,31 @@ function SectionCard({
 function EditableIngredientRow({
   ingredient,
   sectionTitle,
+  index,
+  isFirst,
+  isLast,
   onUpdate,
   onRemove,
+  onMoveUp,
+  onMoveDown,
+  onDropOn,
 }: {
   ingredient: RecipeIngredient;
   sectionTitle: string;
+  index: number;
+  isFirst: boolean;
+  isLast: boolean;
   onUpdate: (ingredientId: string, payload: UpdateRecipeIngredientPayload) => Promise<void>;
   onRemove: (ingredientId: string) => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onDropOn: (fromIndex: number) => void;
 }) {
   const [quantity, setQuantity] = useState(ingredient.quantity ?? "");
   const [name, setName] = useState(ingredient.name);
   const [category, setCategory] = useState(ingredient.category || "Other");
   const [error, setError] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
   const saveTimer = useRef<number | null>(null);
 
   useEffect(() => {
@@ -423,9 +491,43 @@ function EditableIngredientRow({
     }
   }
 
+  function handleDragStart(event: DragEvent<HTMLButtonElement>) {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", String(index));
+  }
+
+  function handleDrop(event: DragEvent<HTMLLIElement>) {
+    event.preventDefault();
+    setDragOver(false);
+    const fromIndex = Number.parseInt(event.dataTransfer.getData("text/plain"), 10);
+    if (Number.isNaN(fromIndex) || fromIndex === index) {
+      return;
+    }
+
+    onDropOn(fromIndex);
+  }
+
   return (
-    <li className="space-y-1">
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[5.5rem_minmax(0,1fr)_8.5rem_4.5rem] sm:items-center">
+    <li
+      className={`space-y-1 rounded-xl ${dragOver ? "ring-2 ring-brand-500/40" : ""}`}
+      onDragOver={(event) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        setDragOver(true);
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={handleDrop}
+    >
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1.75rem_5.5rem_minmax(0,1fr)_8.5rem_auto] sm:items-center">
+        <button
+          type="button"
+          draggable
+          onDragStart={handleDragStart}
+          className="hidden cursor-grab items-center justify-center rounded-lg p-1 text-muted transition hover:bg-brand-50 hover:text-brand-700 active:cursor-grabbing sm:inline-flex"
+          aria-label={`Drag to reorder ${ingredient.name}`}
+        >
+          <GripVertical className="h-4 w-4" aria-hidden />
+        </button>
         <input
           type="text"
           value={quantity}
@@ -468,14 +570,34 @@ function EditableIngredientRow({
             </option>
           ))}
         </select>
-        <button
-          type="button"
-          onClick={() => onRemove(ingredient.id)}
-          className="inline-flex items-center justify-center rounded-xl p-2 text-muted transition hover:bg-red-50 hover:text-red-600 sm:justify-self-end"
-          aria-label={`Remove ${ingredient.name}`}
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
+        <div className="flex items-center justify-end gap-1">
+          <button
+            type="button"
+            onClick={onMoveUp}
+            disabled={isFirst}
+            className="inline-flex items-center justify-center rounded-xl p-2 text-muted transition hover:bg-brand-50 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label={`Move ${ingredient.name} up`}
+          >
+            <ChevronUp className="h-4 w-4" aria-hidden />
+          </button>
+          <button
+            type="button"
+            onClick={onMoveDown}
+            disabled={isLast}
+            className="inline-flex items-center justify-center rounded-xl p-2 text-muted transition hover:bg-brand-50 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label={`Move ${ingredient.name} down`}
+          >
+            <ChevronDown className="h-4 w-4" aria-hidden />
+          </button>
+          <button
+            type="button"
+            onClick={() => onRemove(ingredient.id)}
+            className="inline-flex items-center justify-center rounded-xl p-2 text-muted transition hover:bg-red-50 hover:text-red-600"
+            aria-label={`Remove ${ingredient.name}`}
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
       </div>
       {error && <p className="text-xs text-red-600">{error}</p>}
     </li>
@@ -528,7 +650,8 @@ function AddIngredientRow({
 
   return (
     <div className="space-y-2 border-t border-border pt-3">
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[5.5rem_minmax(0,1fr)_8.5rem_4.5rem] sm:items-center">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1.75rem_5.5rem_minmax(0,1fr)_8.5rem_auto] sm:items-center">
+        <span className="hidden sm:block" aria-hidden />
         <input
           type="text"
           value={quantity}

@@ -110,8 +110,7 @@ function buildSubCategoriesFromIngredients(
   const sectionOrder: string[] = [];
 
   for (const ingredient of [...ingredients].sort(
-    (a, b) =>
-      (a.section ?? "").localeCompare(b.section ?? "") || a.sortOrder - b.sortOrder,
+    (a, b) => a.sortOrder - b.sortOrder,
   )) {
     const label = toPersistedSection(ingredient.section) ?? DEFAULT_SECTION_TITLE;
     if (!groups.has(label)) {

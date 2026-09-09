@@ -140,8 +140,7 @@ public class RecipesController(
             return NotFound(new { error = "Recipe not found." });
         }
         var ingredients = recipe.Ingredients
-            .OrderBy(i => i.Section)
-            .ThenBy(i => i.SortOrder)
+            .OrderBy(i => i.SortOrder)
             .Select(RecipeAccessService.ToIngredientDto)
             .ToList();
         var steps = recipe.Steps
@@ -311,6 +310,80 @@ public class RecipesController(
         recipe.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
         return Ok(RecipeAccessService.ToIngredientDto(ingredient));
+    }
+    [HttpPost("{recipeId:guid}/ingredients/reorder")]
+    [ProducesResponseType(typeof(IReadOnlyList<RecipeIngredientDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<RecipeIngredientDto>>> ReorderIngredients(
+        Guid recipeId,
+        [FromBody] ReorderRecipeIngredientsRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = currentUser.GetUserId();
+        var recipe = await recipeAccess.GetAccessibleRecipeAsync(recipeId, userId, cancellationToken);
+        if (recipe is null)
+        {
+            return NotFound(new { error = "Recipe not found." });
+        }
+
+        var editableCheck = RecipeAccessService.RequireEditable(recipe, userId);
+        if (editableCheck is not null)
+        {
+            return editableCheck;
+        }
+
+        var orderedIds = (request.IngredientIds ?? [])
+            .Where(id => id != Guid.Empty)
+            .ToList();
+        if (orderedIds.Count == 0)
+        {
+            return BadRequest(new { error = "Ingredient ids are required." });
+        }
+
+        if (orderedIds.Count != orderedIds.Distinct().Count())
+        {
+            return BadRequest(new { error = "Ingredient ids must be unique." });
+        }
+
+        if (orderedIds.Count > RequestLimits.MaxBulkOperationIds)
+        {
+            return BadRequest(new { error = $"At most {RequestLimits.MaxBulkOperationIds} ingredients can be reordered per request." });
+        }
+
+        var ingredients = await db.RecipeIngredients
+            .Where(i => i.RecipeId == recipeId)
+            .ToListAsync(cancellationToken);
+        var byId = ingredients.ToDictionary(i => i.Id);
+        if (orderedIds.Any(id => !byId.ContainsKey(id)))
+        {
+            return BadRequest(new { error = "One or more ingredients do not belong to this recipe." });
+        }
+
+        var now = DateTime.UtcNow;
+        var sortOrder = 0;
+        foreach (var id in orderedIds)
+        {
+            sortOrder++;
+            var ingredient = byId[id];
+            ingredient.SortOrder = sortOrder;
+            ingredient.UpdatedAt = now;
+        }
+
+        foreach (var leftover in ingredients
+            .Where(i => !orderedIds.Contains(i.Id))
+            .OrderBy(i => i.SortOrder)
+            .ThenBy(i => i.Name))
+        {
+            sortOrder++;
+            leftover.SortOrder = sortOrder;
+            leftover.UpdatedAt = now;
+        }
+
+        recipe.UpdatedAt = now;
+        await db.SaveChangesAsync(cancellationToken);
+        return Ok(ingredients
+            .OrderBy(i => i.SortOrder)
+            .Select(RecipeAccessService.ToIngredientDto)
+            .ToList());
     }
     [HttpPost("{recipeId:guid}/ingredients/rename-section")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

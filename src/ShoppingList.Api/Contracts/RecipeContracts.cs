@@ -53,6 +53,8 @@ public record UpdateRecipeIngredientRequest(
 
 public record RenameRecipeSectionRequest(string From, string To);
 
+public record ReorderRecipeIngredientsRequest(IReadOnlyList<Guid> IngredientIds);
+
 public record ReplaceRecipeStepsRequest(IReadOnlyList<string> Steps);
 
 public record DeleteRecipeIngredientsRequest(IReadOnlyList<Guid> IngredientIds);
