@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CATEGORIES, suggestCategory } from "../lib/categories";
-import { DEFAULT_SECTION_TITLE, sectionLabelFromIngredient } from "../lib/recipeSections";
+import { DEFAULT_SECTION_TITLE, isDefaultSectionTitle, sectionLabelFromIngredient, toPersistedSection } from "../lib/recipeSections";
 import type {
   CreateRecipeIngredientPayload,
   RecipeIngredient,
@@ -102,6 +102,7 @@ export function RecipeSectionsEditor({
       const nextTitles = nextSections.map((section) => section.title);
       const emptyExtraSections = current.filter(
         (section) =>
+          !isDefaultSectionTitle(section.title) &&
           !nextTitles.includes(section.title) &&
           !ingredients.some((item) => sectionLabelFromIngredient(item) === section.title),
       );
@@ -277,7 +278,7 @@ function SectionCard({
     }
     await onAdd({
       ...payload,
-      section: nextTitle,
+      section: toPersistedSection(nextTitle),
     });
   }
 
@@ -414,7 +415,7 @@ function EditableIngredientRow({
         name: trimmedName,
         quantity: draftFields.quantity.trim() || null,
         category: draftFields.category,
-        section: sectionTitle.trim() || DEFAULT_SECTION_TITLE,
+        section: toPersistedSection(sectionTitle),
         sortOrder: ingredient.sortOrder,
       });
     } catch (err) {
@@ -513,7 +514,7 @@ function AddIngredientRow({
         name: trimmed,
         quantity: quantity.trim() || null,
         category,
-        section: sectionTitle.trim() || DEFAULT_SECTION_TITLE,
+        section: toPersistedSection(sectionTitle),
       });
       setName("");
       setQuantity("");

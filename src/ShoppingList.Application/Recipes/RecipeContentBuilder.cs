@@ -10,6 +10,7 @@ public static class RecipeContentBuilder
     {
         var ingredients = parsed.Ingredients.ToList();
         InferSectionGroups(ingredients);
+        FoldUnlabeledIntoFirstNamedSection(ingredients);
 
         return new RecipeContentDocument
         {
@@ -53,7 +54,7 @@ public static class RecipeContentBuilder
     /// </summary>
     internal static void InferSectionGroups(List<ParsedIngredientDto> ingredients)
     {
-        if (ingredients.Any(i => !string.IsNullOrWhiteSpace(i.Section)))
+        if (ingredients.Any(i => !RecipeSectionNames.IsDefault(i.Section)))
         {
             return;
         }
@@ -68,6 +69,31 @@ public static class RecipeContentBuilder
         {
             var section = i < glazeStart ? "Cake" : "Glaze";
             ingredients[i] = ingredients[i] with { Section = section };
+        }
+    }
+
+    /// <summary>
+    /// OCR often leaves items above the first real header (Cake, Glaze, …) unlabeled
+    /// after skipping the document "Ingredients" heading. Fold those into the first
+    /// named section instead of saving a placeholder "Ingredients" group.
+    /// </summary>
+    public static void FoldUnlabeledIntoFirstNamedSection(List<ParsedIngredientDto> ingredients)
+    {
+        var firstNamed = ingredients
+            .Select(ingredient => ingredient.Section?.Trim())
+            .FirstOrDefault(section => !RecipeSectionNames.IsDefault(section));
+
+        if (string.IsNullOrEmpty(firstNamed))
+        {
+            return;
+        }
+
+        for (var i = 0; i < ingredients.Count; i++)
+        {
+            if (RecipeSectionNames.IsDefault(ingredients[i].Section))
+            {
+                ingredients[i] = ingredients[i] with { Section = firstNamed };
+            }
         }
     }
 
@@ -88,9 +114,7 @@ public static class RecipeContentBuilder
 
         foreach (var ingredient in ingredients)
         {
-            var sectionKey = string.IsNullOrWhiteSpace(ingredient.Section)
-                ? string.Empty
-                : ingredient.Section.Trim();
+            var sectionKey = RecipeSectionNames.Persist(ingredient.Section) ?? string.Empty;
 
             if (!linesBySection.ContainsKey(sectionKey))
             {
@@ -110,7 +134,7 @@ public static class RecipeContentBuilder
         {
             blocks.Add(new RecipeSubCategoryBlock
             {
-                Description = string.IsNullOrEmpty(sectionKey) ? "Ingredients" : sectionKey,
+                Description = string.IsNullOrEmpty(sectionKey) ? RecipeSectionNames.Default : sectionKey,
                 Ingredients = linesBySection[sectionKey]
             });
         }

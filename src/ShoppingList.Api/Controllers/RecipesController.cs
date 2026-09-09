@@ -261,7 +261,7 @@ public class RecipesController(
             Name = request.Name.Trim(),
             Quantity = string.IsNullOrWhiteSpace(request.Quantity) ? null : request.Quantity.Trim(),
             Category = string.IsNullOrWhiteSpace(request.Category) ? "Other" : request.Category.Trim(),
-            Section = string.IsNullOrWhiteSpace(request.Section) ? null : request.Section.Trim(),
+            Section = RecipeSectionNames.Persist(request.Section),
             SortOrder = nextSortOrder + 1,
             CreatedAt = DateTime.UtcNow
         };
@@ -302,7 +302,7 @@ public class RecipesController(
         ingredient.Name = request.Name.Trim();
         ingredient.Quantity = string.IsNullOrWhiteSpace(request.Quantity) ? null : request.Quantity.Trim();
         ingredient.Category = string.IsNullOrWhiteSpace(request.Category) ? "Other" : request.Category.Trim();
-        ingredient.Section = string.IsNullOrWhiteSpace(request.Section) ? null : request.Section.Trim();
+        ingredient.Section = RecipeSectionNames.Persist(request.Section);
         if (request.SortOrder is not null)
         {
             ingredient.SortOrder = request.SortOrder.Value;
@@ -320,12 +320,12 @@ public class RecipesController(
         CancellationToken cancellationToken)
     {
         var from = request.From?.Trim() ?? string.Empty;
-        var to = request.To?.Trim() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(to))
+        var to = RecipeSectionNames.Persist(request.To);
+        if (string.IsNullOrWhiteSpace(request.To))
         {
             return BadRequest(new { error = "Section name is required." });
         }
-        if (string.Equals(from, to, StringComparison.Ordinal))
+        if (string.Equals(RecipeSectionNames.Persist(from), to, StringComparison.Ordinal))
         {
             return NoContent();
         }
@@ -344,7 +344,10 @@ public class RecipesController(
             .Where(i => i.RecipeId == recipeId)
             .ToListAsync(cancellationToken);
         var matched = ingredients
-            .Where(i => string.Equals(i.Section?.Trim() ?? "Ingredients", from, StringComparison.Ordinal))
+            .Where(i => string.Equals(
+                RecipeSectionNames.Persist(i.Section) ?? RecipeSectionNames.Default,
+                RecipeSectionNames.Persist(from) ?? RecipeSectionNames.Default,
+                StringComparison.Ordinal))
             .ToList();
         foreach (var ingredient in matched)
         {
@@ -641,7 +644,7 @@ public class RecipesController(
                 Name = item.Name,
                 Quantity = string.IsNullOrWhiteSpace(item.Quantity) ? null : item.Quantity,
                 Category = item.Category,
-                Section = item.Section,
+                Section = RecipeSectionNames.Persist(item.Section),
                 SortOrder = nextSortOrder,
                 CreatedAt = now
             });

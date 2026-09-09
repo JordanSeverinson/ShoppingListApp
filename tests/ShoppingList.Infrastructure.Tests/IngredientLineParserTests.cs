@@ -128,6 +128,8 @@ public class IngredientLineParserTests
         var content = RecipeContentBuilder.FromParsed(IngredientLineParser.ParseRecipeContent(ocr));
 
         Assert.Equal(2, content.Recipe.SubCategories.Count);
+        Assert.DoesNotContain(content.Recipe.SubCategories, b =>
+            string.Equals(b.Description, "Ingredients", StringComparison.OrdinalIgnoreCase));
         Assert.Equal("Cake", content.Recipe.SubCategories[0].Description);
         Assert.Contains(content.Recipe.SubCategories[0].Ingredients, i => i.Contains("butter", StringComparison.OrdinalIgnoreCase));
         Assert.Equal("Glaze", content.Recipe.SubCategories[1].Description);
@@ -309,6 +311,31 @@ public class IngredientLineParserTests
         Assert.Contains("Dress", content.Steps[0], StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Let stand", content.Steps[1], StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("1 Dress", content.Steps[0], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ParseRecipeContent_does_not_treat_document_ingredients_heading_as_a_section()
+    {
+        const string ocr = """
+            Ingredients
+            1 cup butter
+            Cake
+            2 cups all-purpose flour
+            Glaze
+            2 cups confectioners sugar
+            """;
+
+        var parsed = IngredientLineParser.ParseRecipeContent(ocr);
+        var content = RecipeContentBuilder.FromParsed(parsed);
+
+        Assert.DoesNotContain(parsed.Ingredients, i =>
+            string.Equals(i.Section, "Ingredients", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(parsed.Ingredients, i =>
+            i.Name.Contains("butter", StringComparison.OrdinalIgnoreCase)
+            && i.Section == "Cake");
+        Assert.Equal(2, content.Recipe.SubCategories.Count);
+        Assert.DoesNotContain(content.Recipe.SubCategories, b =>
+            string.Equals(b.Description, "Ingredients", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

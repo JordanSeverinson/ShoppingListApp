@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using ShoppingList.Application.Parsing;
+using ShoppingList.Application.Recipes;
 
 namespace ShoppingList.Infrastructure.Ocr;
 
@@ -336,7 +337,12 @@ internal static partial class IngredientLineParser
         {
             if (IsSectionHeader(line))
             {
-                currentSection = CleanSectionName(line);
+                var sectionName = RecipeSectionNames.Persist(CleanSectionName(line));
+                if (sectionName is not null)
+                {
+                    currentSection = sectionName;
+                }
+
                 continue;
             }
 
@@ -364,9 +370,10 @@ internal static partial class IngredientLineParser
                 Name: name,
                 Quantity: quantity,
                 Category: InferCategory(name),
-                Section: currentSection));
+                Section: RecipeSectionNames.Persist(currentSection)));
         }
 
+        RecipeContentBuilder.FoldUnlabeledIntoFirstNamedSection(results);
         return results;
     }
 

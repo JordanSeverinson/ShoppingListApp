@@ -1,3 +1,5 @@
+import { DEFAULT_SECTION_TITLE, isDefaultSectionTitle, toPersistedSection } from "../lib/recipeSections";
+
 export interface RecipeSubCategoryBlock {
   description: string;
   ingredients: string[];
@@ -49,13 +51,36 @@ function normalizeSubCategoriesForDisplay(
 
     return [
       {
-        description: "Ingredients",
+        description: DEFAULT_SECTION_TITLE,
         ingredients: blocks[0].ingredients,
       },
     ];
   }
 
   return blocks;
+}
+
+function foldPlaceholderSiblingBlocks(
+  blocks: RecipeSubCategoryBlock[],
+): RecipeSubCategoryBlock[] {
+  const named = blocks.filter((block) => !isDefaultSectionTitle(block.description));
+  if (named.length === 0) {
+    return blocks;
+  }
+
+  const leftover = blocks.filter((block) => isDefaultSectionTitle(block.description));
+  if (leftover.length === 0) {
+    return named;
+  }
+
+  const [first, ...rest] = named;
+  return [
+    {
+      ...first,
+      ingredients: [...leftover.flatMap((block) => block.ingredients), ...first.ingredients],
+    },
+    ...rest,
+  ];
 }
 
 function isSubCategoryBlock(value: unknown): value is RecipeSubCategoryBlock {
@@ -88,7 +113,7 @@ function buildSubCategoriesFromIngredients(
     (a, b) =>
       (a.section ?? "").localeCompare(b.section ?? "") || a.sortOrder - b.sortOrder,
   )) {
-    const label = ingredient.section?.trim() || "Ingredients";
+    const label = toPersistedSection(ingredient.section) ?? DEFAULT_SECTION_TITLE;
     if (!groups.has(label)) {
       groups.set(label, []);
       sectionOrder.push(label);
@@ -106,7 +131,9 @@ export function buildRecipeContentDocument(
   ingredients: RecipeIngredient[],
   cookingSteps: string[],
 ): RecipeContentDocument {
-  const subCategories = buildSubCategoriesFromIngredients(ingredients);
+  const subCategories = foldPlaceholderSiblingBlocks(
+    buildSubCategoriesFromIngredients(ingredients),
+  );
   return {
     recipe: {
       cookingSteps,
@@ -118,7 +145,7 @@ export function buildRecipeContentDocument(
 function inferSectionGroupsFromIngredients(
   ingredients: RecipeIngredient[],
 ): RecipeIngredient[] {
-  if (ingredients.some((ingredient) => ingredient.section?.trim())) {
+  if (ingredients.some((ingredient) => toPersistedSection(ingredient.section))) {
     return ingredients;
   }
 
@@ -170,7 +197,7 @@ export function resolveRecipeDisplayData(
     subCategories:
       rawBlocks.length <= 1
         ? normalizeSubCategoriesForDisplay(rawBlocks)
-        : rawBlocks,
+        : foldPlaceholderSiblingBlocks(rawBlocks),
     cookingSteps,
     hasMultipleSubsections: rawBlocks.length > 1,
   };
