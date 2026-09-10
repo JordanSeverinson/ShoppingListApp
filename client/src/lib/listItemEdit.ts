@@ -1,9 +1,11 @@
 import { isApiError } from "./apiError";
 import type { ListItem } from "../types/list";
 
-export const ITEM_CONFLICT_CODE = "ITEM_CONFLICT";
+const ITEM_CONFLICT_CODE = "ITEM_CONFLICT";
 
-export function isItemConflict(error: unknown): boolean {
+export function isItemConflict(
+  error: unknown,
+): error is { body: { item: ListItem } } {
   if (!isApiError(error) || error.code !== ITEM_CONFLICT_CODE) {
     return false;
   }
@@ -13,14 +15,10 @@ export function isItemConflict(error: unknown): boolean {
 }
 
 export function conflictItem(error: unknown): ListItem | null {
-  if (!isItemConflict(error)) {
-    return null;
-  }
-
-  return error.body!.item as ListItem;
+  return isItemConflict(error) ? error.body.item : null;
 }
 
-export type ItemEditFields = {
+type ItemEditFields = {
   name: string;
   quantity: string;
   category: string;

@@ -36,6 +36,13 @@ public sealed class RecipeContentRootJsonConverter : JsonConverter<RecipeContent
                 continue;
             }
 
+            if (propertyName.Equals("subCategories", StringComparison.OrdinalIgnoreCase))
+            {
+                root.SubCategories = JsonSerializer.Deserialize<List<RecipeSubCategoryBlock>>(ref reader, options)
+                    ?? [];
+                continue;
+            }
+
             if (propertyName.StartsWith("subCategory", StringComparison.OrdinalIgnoreCase))
             {
                 var block = JsonSerializer.Deserialize<RecipeSubCategoryBlock>(ref reader, options);

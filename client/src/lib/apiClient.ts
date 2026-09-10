@@ -1,7 +1,6 @@
+import { API_BASE } from "./apiBase";
 import { ApiError } from "./apiError";
 import { getCsrfToken } from "./csrf";
-
-export const API_BASE = import.meta.env.VITE_API_URL ?? "";
 
 export const CSRF_HEADER_NAME = "X-CSRF";
 
@@ -38,7 +37,7 @@ function buildCsrfHeaders(extra?: HeadersInit): HeadersInit {
   return mergeHeaders({}, extra);
 }
 
-export async function handleResponse<T>(
+async function handleResponse<T>(
   response: Response,
   options?: { skipUnauthorizedHandler?: boolean },
 ): Promise<T> {

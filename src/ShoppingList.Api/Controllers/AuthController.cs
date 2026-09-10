@@ -25,9 +25,6 @@ public class AuthController(
     JwtDenylistService jwtDenylist,
     ILogger<AuthController> logger) : ControllerBase
 {
-    private static readonly HashSet<string> AllowedGenders =
-        new(StringComparer.OrdinalIgnoreCase) { "Male", "Female", "Non-binary" };
-
     [HttpGet("csrf")]
     [AllowAnonymous]
     [ProducesResponseType(typeof(CsrfTokenResponse), StatusCodes.Status200OK)]
@@ -99,14 +96,13 @@ public class AuthController(
         if (!string.IsNullOrWhiteSpace(request.Gender))
         {
             var trimmedGender = request.Gender.Trim();
-            var genderError = RegistrationValidator.ValidateGender(trimmedGender, AllowedGenders);
+            var genderError = RegistrationValidator.ValidateGender(trimmedGender);
             if (genderError is not null)
             {
                 return BadRequest(new { error = genderError });
             }
 
-            gender = AllowedGenders.First(g =>
-                string.Equals(g, trimmedGender, StringComparison.OrdinalIgnoreCase));
+            gender = RegistrationValidator.CanonicalGender(trimmedGender);
         }
 
         var preferredName = request.PreferredName.Trim();

@@ -1,6 +1,6 @@
-using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using ShoppingList.Api.Contracts;
+using ShoppingList.Application.Users;
 using ShoppingList.Domain.Entities;
 using ShoppingList.Domain.Enums;
 using ShoppingList.Infrastructure.Persistence;
@@ -200,7 +200,7 @@ public class FriendsService(ApplicationDbContext db)
 
         if (hasPhone)
         {
-            var normalized = NormalizePhone(request.PhoneNumber!);
+            var normalized = PhoneNormalizer.Normalize(request.PhoneNumber!);
             if (normalized.Length < 7)
             {
                 throw new InvalidOperationException("Enter a valid phone number.");
@@ -211,7 +211,7 @@ public class FriendsService(ApplicationDbContext db)
                 .Where(u => u.PhoneNumber != null)
                 .ToListAsync(cancellationToken);
 
-            return users.FirstOrDefault(u => NormalizePhone(u.PhoneNumber!) == normalized);
+            return users.FirstOrDefault(u => PhoneNormalizer.Normalize(u.PhoneNumber!) == normalized);
         }
 
         var friendCode = request.FriendCode!.Trim().ToUpperInvariant();
@@ -219,9 +219,6 @@ public class FriendsService(ApplicationDbContext db)
             .AsNoTracking()
             .FirstOrDefaultAsync(u => u.FriendCode == friendCode, cancellationToken);
     }
-
-    private static string NormalizePhone(string phone) =>
-        Regex.Replace(phone, @"\D", string.Empty);
 
     private static User OtherUser(Friendship friendship, Guid userId) =>
         friendship.RequesterId == userId ? friendship.Addressee : friendship.Requester;

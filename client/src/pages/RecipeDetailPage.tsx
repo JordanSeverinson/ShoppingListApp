@@ -8,6 +8,7 @@ import { RecipeReadOnlyView } from "../components/RecipeReadOnlyView";
 import { RecipeSectionsEditor } from "../components/RecipeSectionsEditor";
 import { RecipeStepsEditor } from "../components/RecipeStepsEditor";
 import { ShareWithFriendsModal } from "../components/ShareWithFriendsModal";
+import { useAutoDismissMessage } from "../hooks/useAutoDismissMessage";
 import { enqueueDelete, flushDeletesNow, hasPendingDeletes } from "../lib/deleteQueue";
 import { RECIPE_TYPES, type RecipeType } from "../lib/recipeTypes";
 import { sectionLabelFromIngredient } from "../lib/recipeSections";
@@ -17,16 +18,14 @@ import type {
   RecipeIngredient,
   UpdateRecipeIngredientPayload,
 } from "../types/recipe";
-import { buildRecipeContentDocument } from "../types/recipe";
+import { buildRecipeContentDocument, resolveCookingSteps } from "../types/recipe";
 
 function sortIngredients(ingredients: RecipeIngredient[]): RecipeIngredient[] {
   return [...ingredients].sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
 function cookingStepsFromRecipe(recipe: RecipeDetail): string[] {
-  return recipe.content.recipe.cookingSteps.length
-    ? recipe.content.recipe.cookingSteps
-    : recipe.steps.map((step) => step.text);
+  return resolveCookingSteps(recipe.content, recipe.steps);
 }
 
 export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
@@ -39,6 +38,7 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
   const [shareStatusMessage, setShareStatusMessage] = useState<string | null>(null);
   const deleteQueueKey = recipeId ? `recipe:${recipeId}` : null;
   const ingredientUpdateChain = useRef(new Map<string, Promise<void>>());
+  const stepsSaveChain = useRef(Promise.resolve());
 
   const patchIngredients = useCallback(
     (mutate: (ingredients: RecipeIngredient[]) => RecipeIngredient[]) => {
@@ -75,17 +75,7 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
     void refresh();
   }, [refresh]);
 
-  useEffect(() => {
-    if (!shareStatusMessage) {
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      setShareStatusMessage(null);
-    }, 3000);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [shareStatusMessage]);
+  useAutoDismissMessage(shareStatusMessage, setShareStatusMessage);
 
   const readOnlyRef = useRef(readOnly);
   useEffect(() => {
@@ -141,23 +131,9 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
   );
 
   async function leaveEditPage(destination: "view" | "list" = "view") {
+    await stepsSaveChain.current;
     if (deleteQueueKey && hasPendingDeletes(deleteQueueKey)) {
       await flushDeletesNow(deleteQueueKey);
-    }
-
-    if (recipeId) {
-      try {
-        const fetchedRecipe = await recipesApi.fetchRecipe(recipeId);
-        const cookingSteps = cookingStepsFromRecipe(fetchedRecipe);
-        const content = buildRecipeContentDocument(
-          fetchedRecipe.ingredients,
-          cookingSteps,
-        );
-        const savedContent = await recipesApi.saveRecipeContent(recipeId, content);
-        setRecipe({ ...fetchedRecipe, content: savedContent });
-      } catch {
-        await refresh({ showLoading: false });
-      }
     }
 
     navigate(destination === "list" ? "/recipes" : `/recipes/${recipeId}`);
@@ -299,16 +275,24 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
     if (!recipeId) {
       return;
     }
-    const savedSteps = await recipesApi.saveRecipeSteps(recipeId, steps);
-    let ingredients: RecipeIngredient[] = [];
-    setRecipe((previous) => {
-      if (!previous) {
-        return previous;
-      }
-      ingredients = previous.ingredients;
-      return { ...previous, steps: savedSteps };
-    });
-    await syncRecipeContent(ingredients, steps);
+    const run = (async () => {
+      const savedSteps = await recipesApi.saveRecipeSteps(recipeId, steps);
+      let ingredients: RecipeIngredient[] = [];
+      setRecipe((previous) => {
+        if (!previous) {
+          return previous;
+        }
+        ingredients = previous.ingredients;
+        return {
+          ...previous,
+          steps: savedSteps,
+          content: buildRecipeContentDocument(previous.ingredients, steps),
+        };
+      });
+      await syncRecipeContent(ingredients, steps);
+    })();
+    stepsSaveChain.current = run.catch(() => undefined);
+    await run;
   }
 
   const handleRemoveIngredient = useCallback(

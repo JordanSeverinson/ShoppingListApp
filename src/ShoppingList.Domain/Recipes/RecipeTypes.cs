@@ -17,9 +17,6 @@ public static class RecipeTypes
         Drink,
     ];
 
-    public static bool IsValid(string? value) =>
-        !string.IsNullOrWhiteSpace(value) && All.Contains(value.Trim());
-
     public static string? Normalize(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))

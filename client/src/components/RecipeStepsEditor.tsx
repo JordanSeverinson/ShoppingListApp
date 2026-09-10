@@ -55,7 +55,10 @@ export function RecipeStepsEditor({
   const lastSavedKey = useRef(serializeSteps(steps));
   const skipNextSync = useRef(false);
   const saveTimer = useRef<number | null>(null);
-  const persistInFlight = useRef<Promise<void> | null>(null);
+  const persistTail = useRef(Promise.resolve());
+  const pendingDraft = useRef<string[] | null>(null);
+  const saving = useRef(false);
+  const persistRef = useRef<(nextDraft: string[]) => Promise<void>>(async () => undefined);
   const isMounted = useRef(true);
 
   useEffect(() => {
@@ -67,10 +70,12 @@ export function RecipeStepsEditor({
   }, [onSave]);
 
   useEffect(() => {
+    if (skipNextSync.current || saving.current || pendingDraft.current) {
+      return;
+    }
+
     const incomingKey = serializeSteps(steps);
-    if (skipNextSync.current) {
-      skipNextSync.current = false;
-      lastSavedKey.current = incomingKey;
+    if (incomingKey === lastSavedKey.current) {
       return;
     }
 
@@ -85,39 +90,52 @@ export function RecipeStepsEditor({
       if (saveTimer.current) {
         window.clearTimeout(saveTimer.current);
       }
-      void persist(draftRef.current);
+      void persistRef.current(draftRef.current);
     };
   }, []);
 
-  async function persist(nextDraft: string[]) {
+  async function flushPersist() {
+    const nextDraft = pendingDraft.current;
+    pendingDraft.current = null;
+    if (!nextDraft || !onSaveRef.current) {
+      return;
+    }
+
     const trimmedSteps = nextDraft.map((step) => step.trim()).filter((step) => step.length > 0);
     const nextKey = serializeSteps(trimmedSteps);
-    if (!onSaveRef.current || nextKey === lastSavedKey.current) {
+    if (nextKey === lastSavedKey.current) {
       return;
     }
 
     if (isMounted.current) {
       setError(null);
     }
+
+    const previousKey = lastSavedKey.current;
+    lastSavedKey.current = nextKey;
     skipNextSync.current = true;
-    const pending = onSaveRef.current(trimmedSteps)
-      .then(() => {
-        lastSavedKey.current = nextKey;
-      })
-      .catch((err: unknown) => {
-        skipNextSync.current = false;
-        if (isMounted.current) {
-          setError(err instanceof Error ? err.message : "Could not save steps");
-        }
-      })
-      .finally(() => {
-        if (persistInFlight.current === pending) {
-          persistInFlight.current = null;
-        }
-      });
-    persistInFlight.current = pending;
-    await pending;
+    saving.current = true;
+    try {
+      await onSaveRef.current(trimmedSteps);
+    } catch (err: unknown) {
+      lastSavedKey.current = previousKey;
+      if (isMounted.current) {
+        setError(err instanceof Error ? err.message : "Could not save steps");
+      }
+    } finally {
+      skipNextSync.current = false;
+      saving.current = false;
+    }
   }
+
+  function persist(nextDraft: string[]) {
+    pendingDraft.current = nextDraft;
+    const run = persistTail.current.then(flushPersist);
+    persistTail.current = run.catch(() => undefined);
+    return run;
+  }
+
+  persistRef.current = persist;
 
   function schedulePersist(nextDraft: string[]) {
     if (saveTimer.current) {

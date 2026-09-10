@@ -5,6 +5,7 @@ import * as listsApi from "../api/lists";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { ListCard } from "../components/ListCard";
 import { PendingListShareCard } from "../components/PendingListShareCard";
+import { useAutoDismissMessage } from "../hooks/useAutoDismissMessage";
 import { APP_NAME } from "../lib/appName";
 import { clearDeleteQueue } from "../lib/deleteQueue";
 import type { ListSummary, PendingListShare } from "../types/list";
@@ -52,17 +53,7 @@ export function ShoppingListsPage() {
     }
   }, [listLoading, pendingShares.length]);
 
-  useEffect(() => {
-    if (!statusMessage) {
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      setStatusMessage(null);
-    }, 3000);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [statusMessage]);
+  useAutoDismissMessage(statusMessage, setStatusMessage);
 
   async function handleCreate(event: FormEvent) {
     event.preventDefault();

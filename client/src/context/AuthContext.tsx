@@ -12,14 +12,13 @@ import * as usersApi from "../api/users";
 import { isApiError } from "../lib/apiError";
 import { setUnauthorizedHandler } from "../lib/apiClient";
 import { clearCsrfToken, ensureCsrfToken } from "../lib/csrf";
-import type { RegisterPayload, UserProfile } from "../types/user";
+import type { UserProfile } from "../types/user";
 
 interface AuthContextValue {
   user: UserProfile | null;
   isAuthenticated: boolean;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (payload: RegisterPayload) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -89,10 +88,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(response.user);
   }, []);
 
-  const register = useCallback(async (payload: RegisterPayload) => {
-    await usersApi.register(payload);
-  }, []);
-
   const logout = useCallback(async () => {
     try {
       await usersApi.logout();
@@ -113,11 +108,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticated: user !== null,
       loading,
       login,
-      register,
       logout,
       refreshUser,
     }),
-    [user, loading, login, register, logout, refreshUser],
+    [user, loading, login, logout, refreshUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

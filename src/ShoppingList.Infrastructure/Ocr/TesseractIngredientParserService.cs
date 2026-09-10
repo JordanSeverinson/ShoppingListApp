@@ -97,18 +97,16 @@ public sealed class TesseractIngredientParserService(
             return true;
         }
 
-        return importMode switch
-        {
-            RecipeImageImportMode.IngredientsOnly =>
-                candidate.Ingredients.Count > current.Ingredients.Count,
-            RecipeImageImportMode.CookingStepsOnly =>
-                candidate.Steps.Count > current.Steps.Count,
-            _ =>
-                candidate.Ingredients.Count > current.Ingredients.Count
-                || (candidate.Ingredients.Count == current.Ingredients.Count
-                    && candidate.Steps.Count > current.Steps.Count)
-        };
+        return ScoreOcrResult(candidate, importMode) > ScoreOcrResult(current, importMode);
     }
+
+    internal static int ScoreOcrResult(ParsedRecipeContentDto parsed, RecipeImageImportMode importMode) =>
+        importMode switch
+        {
+            RecipeImageImportMode.IngredientsOnly => parsed.Ingredients.Count,
+            RecipeImageImportMode.CookingStepsOnly => parsed.Steps.Count,
+            _ => parsed.Ingredients.Count * 4 + parsed.Steps.Count * 6
+        };
 
     private static Pix PrepareImage(Pix source)
     {

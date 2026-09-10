@@ -1,5 +1,5 @@
 import { ArrowLeft, History, LogOut, ShoppingCart, UserPlus } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import * as listsApi from "../api/lists";
 import { AddItemInput } from "../components/AddItemInput";
@@ -10,6 +10,7 @@ import { ListView } from "../components/ListView";
 import { RecipeImporter } from "../components/RecipeImporter";
 import { ShareWithFriendsModal } from "../components/ShareWithFriendsModal";
 import { ShoppingListProvider, useShoppingList } from "../context/ShoppingListContext";
+import { useAutoDismissMessage } from "../hooks/useAutoDismissMessage";
 
 function ListDetailContent() {
   const navigate = useNavigate();
@@ -28,17 +29,7 @@ function ListDetailContent() {
   const [leaving, setLeaving] = useState(false);
   const [leaveError, setLeaveError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!shareMessage) {
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      setShareMessage(null);
-    }, 3000);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [shareMessage]);
+  useAutoDismissMessage(shareMessage, setShareMessage);
 
   async function confirmLeaveList() {
     setLeaving(true);

@@ -23,9 +23,6 @@ public class UsersController(
     AuthCookieService authCookies,
     ILogger<UsersController> logger) : ControllerBase
 {
-    private static readonly HashSet<string> AllowedGenders =
-        new(StringComparer.OrdinalIgnoreCase) { "Male", "Female", "Non-binary" };
-
     [HttpGet("me")]
     [ProducesResponseType(typeof(UserProfileDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -151,14 +148,13 @@ public class UsersController(
 
             if (gender is not null)
             {
-                var genderError = RegistrationValidator.ValidateGender(gender, AllowedGenders);
+                var genderError = RegistrationValidator.ValidateGender(gender);
                 if (genderError is not null)
                 {
                     return BadRequest(new { error = genderError });
                 }
 
-                gender = AllowedGenders.First(g =>
-                    string.Equals(g, gender, StringComparison.OrdinalIgnoreCase));
+                gender = RegistrationValidator.CanonicalGender(gender);
             }
 
             user.Gender = gender;

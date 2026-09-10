@@ -60,7 +60,7 @@ internal static partial class IngredientLineParser
         (PantryPattern(), "Pantry"),
     ];
 
-    [GeneratedRegex(@"^[\-\*\u2022\u2023\u25E6\u2043\u25A1\u2610\u2611\u2612\u25CF\u25CB\u25AA\u25AB\[\]\(\)□■▪●○◦@]+[\.\)\:]?\s*", RegexOptions.Compiled)]
+    [GeneratedRegex(@"^[\-\*\u2022\u2023\u25E6\u2043\u25A1\u2610\u2611\u2612\u25CF\u25CB\u25AA\u25AB\[\]\(\)□■▪●○◦@`|'\uFFFD]+[\.\)\:]?\s*", RegexOptions.Compiled)]
     private static partial Regex BulletPrefixPattern();
 
     [GeneratedRegex(@"\s+[\-\*\u2022\u2023\u25E6\u2043\u25A1\u25CF\u25CB\u25AA\u25AB□■▪●○◦@]+\s+", RegexOptions.Compiled)]
@@ -80,6 +80,21 @@ internal static partial class IngredientLineParser
 
     [GeneratedRegex(@"^(?<!\d)(\d{1,2})$", RegexOptions.Compiled)]
     private static partial Regex StandaloneStepNumberPattern();
+
+    [GeneratedRegex(@"^[`|'\uFFFD•●○◦]$", RegexOptions.Compiled)]
+    private static partial Regex StandaloneStepGlyphPattern();
+
+    [GeneratedRegex(@"^[a-zIloO]\s+(?=[A-Z][a-z]{2,})", RegexOptions.Compiled)]
+    private static partial Regex LeadingOcrJunkBeforeStepPattern();
+
+    [GeneratedRegex(@"(?<=\S)\s*[`|'\uFFFD•●○◦]\s+(?=[A-Z])", RegexOptions.Compiled)]
+    private static partial Regex EmbeddedStepGlyphSplitPattern();
+
+    [GeneratedRegex(@"(?<=\S)\s+(?=Meanwhile\b)", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+    private static partial Regex EmbeddedMeanwhileSplitPattern();
+
+    [GeneratedRegex(@"(?<=[.!?])\s+(?:[a-zIloO]|[^\w\s])\s+(?=[A-Z][a-z]{2,})", RegexOptions.Compiled)]
+    private static partial Regex EmbeddedOcrJunkStepSplitPattern();
 
     [GeneratedRegex(@"^Step\s*\d+\s*[:.\-\u2013\u2014)]?\s*(.*)$", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
     private static partial Regex StepHeaderPattern();
@@ -424,6 +439,12 @@ internal static partial class IngredientLineParser
                 continue;
             }
 
+            if (current.Length > 0 && LooksLikeNewUnnumberedStep(current.ToString(), trimmed))
+            {
+                steps.Add(current.ToString().Trim());
+                current.Clear();
+            }
+
             if (current.Length > 0)
             {
                 current.Append(' ');
@@ -449,17 +470,26 @@ internal static partial class IngredientLineParser
 
         foreach (var line in lines)
         {
-            var fragments = EmbeddedStepSplitPattern().Split(line);
-            foreach (var fragment in fragments)
+            foreach (var meanwhile in EmbeddedMeanwhileSplitPattern().Split(line))
             {
-                foreach (var numbered in EmbeddedNumberedStepSplitPattern().Split(fragment))
+                foreach (var glyphSeparated in EmbeddedStepGlyphSplitPattern().Split(meanwhile))
                 {
-                    foreach (var bareNumbered in EmbeddedBareNumberStepSplitPattern().Split(numbered))
+                    foreach (var junkSeparated in EmbeddedOcrJunkStepSplitPattern().Split(glyphSeparated))
                     {
-                        var trimmed = bareNumbered.Trim();
-                        if (IsSubstantiveDirectionLine(trimmed))
+                        var fragments = EmbeddedStepSplitPattern().Split(junkSeparated);
+                        foreach (var fragment in fragments)
                         {
-                            expanded.Add(trimmed);
+                            foreach (var numbered in EmbeddedNumberedStepSplitPattern().Split(fragment))
+                            {
+                                foreach (var bareNumbered in EmbeddedBareNumberStepSplitPattern().Split(numbered))
+                                {
+                                    var trimmed = StripLeadingStepGlyphs(bareNumbered);
+                                    if (IsSubstantiveDirectionLine(trimmed))
+                                    {
+                                        expanded.Add(trimmed);
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -474,7 +504,7 @@ internal static partial class IngredientLineParser
         stepText = string.Empty;
         var trimmed = line.Trim();
 
-        if (StandaloneStepNumberPattern().IsMatch(trimmed))
+        if (StandaloneStepNumberPattern().IsMatch(trimmed) || StandaloneStepGlyphPattern().IsMatch(trimmed))
         {
             return true;
         }
@@ -520,10 +550,58 @@ internal static partial class IngredientLineParser
         return current.All(c => !char.IsLetterOrDigit(c)) ? string.Empty : current;
     }
 
+    private static string StripLeadingStepGlyphs(string line)
+    {
+        var current = line.Trim();
+        current = BulletPrefixPattern().Replace(current, string.Empty).Trim();
+        current = LeadingOcrJunkBeforeStepPattern().Replace(current, string.Empty, 1).Trim();
+        return current;
+    }
+
+    private static bool LooksLikeNewUnnumberedStep(string current, string next)
+    {
+        var start = StripLeadingStepGlyphs(next);
+        if (start.Length > 0 && char.IsLower(start[0]))
+        {
+            return false;
+        }
+
+        if (start.StartsWith("Meanwhile", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (!EndsWithSentenceTerminator(current))
+        {
+            return false;
+        }
+
+        return start.Length > 0 && char.IsUpper(start[0]);
+    }
+
+    private static bool EndsWithSentenceTerminator(string text)
+    {
+        var trimmed = text.TrimEnd();
+        if (trimmed.Length == 0)
+        {
+            return false;
+        }
+
+        if (trimmed[^1] is '.' or '!' or '?')
+        {
+            return true;
+        }
+
+        return trimmed.Length >= 2
+            && trimmed[^1] is '"' or '\''
+            && trimmed[^2] is '.' or '!' or '?';
+    }
+
     private static bool IsStepHeaderLine(string line)
     {
         var trimmed = line.Trim();
         return StandaloneStepNumberPattern().IsMatch(trimmed)
+            || StandaloneStepGlyphPattern().IsMatch(trimmed)
             || StepHeaderPattern().IsMatch(trimmed)
             || NumberedStepPattern().IsMatch(trimmed)
             || BareNumberedStepPattern().IsMatch(trimmed);
@@ -694,6 +772,12 @@ internal static partial class IngredientLineParser
         if (IsStepHeaderLine(next) || IsStandaloneStepNumber(previous))
         {
             return false;
+        }
+
+        var nextStart = StripLeadingStepGlyphs(next);
+        if (nextStart.Length > 0 && char.IsLower(nextStart[0]))
+        {
+            return true;
         }
 
         if (previous.EndsWith('-'))
@@ -868,8 +952,12 @@ internal static partial class IngredientLineParser
         return letters < line.Length * 0.35;
     }
 
-    private static bool IsStandaloneStepNumber(string line) =>
-        StandaloneStepNumberPattern().IsMatch(line.Trim());
+    private static bool IsStandaloneStepNumber(string line)
+    {
+        var trimmed = line.Trim();
+        return StandaloneStepNumberPattern().IsMatch(trimmed)
+            || StandaloneStepGlyphPattern().IsMatch(trimmed);
+    }
 
     private static bool IsCheckboxOcrArtifact(string line)
     {

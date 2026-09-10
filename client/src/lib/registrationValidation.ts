@@ -1,11 +1,3 @@
-export interface RegisterPayload {
-  email: string;
-  password: string;
-  preferredName: string;
-  gender?: string | null;
-  phoneNumber?: string | null;
-}
-
 const PREFERRED_NAME_PATTERN = /^[a-zA-Z0-9 ]+$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 

@@ -12,7 +12,7 @@ function createNode(): TrieNode {
 }
 
 /** Normalizes item names for dictionary matching. */
-export function normalizeItemName(name: string): string {
+function normalizeItemName(name: string): string {
   return name
     .toLowerCase()
     .trim()
@@ -22,7 +22,7 @@ export function normalizeItemName(name: string): string {
     .trim();
 }
 
-export class CategoryTrie {
+class CategoryTrie {
   private readonly root = createNode();
 
   constructor(keywords: Record<string, string[]>) {

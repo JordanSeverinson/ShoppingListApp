@@ -143,16 +143,22 @@ public class RecipesController(
             .OrderBy(i => i.SortOrder)
             .Select(RecipeAccessService.ToIngredientDto)
             .ToList();
-        var steps = recipe.Steps
+        var orderedSteps = recipe.Steps
             .OrderBy(s => s.SortOrder)
             .Select(RecipeAccessService.ToStepDto)
             .ToList();
+        var collapsedStepTexts = RecipeContentBuilder.CollapseRepeatedSteps(
+            orderedSteps.Select(step => step.Text).ToList());
+        var steps = orderedSteps.Take(collapsedStepTexts.Count).ToList();
+        var content = RecipeContentBuilder.WithCookingSteps(
+            RecipeAccessService.ResolveContent(recipe),
+            collapsedStepTexts);
         return Ok(new RecipeDetailResponse(
             recipe.Id,
             recipe.Name,
             recipe.RecipeType,
             recipe.OwnerId == userId,
-            RecipeAccessService.ResolveContent(recipe),
+            content,
             ingredients,
             steps));
     }
@@ -529,7 +535,7 @@ public class RecipesController(
         CancellationToken cancellationToken)
     {
         var userId = currentUser.GetUserId();
-        var recipe = await recipeAccess.GetAccessibleRecipeAsync(recipeId, userId, cancellationToken);
+        var recipe = await recipeAccess.GetAccessibleRecipeMetadataAsync(recipeId, userId, cancellationToken);
         if (recipe is null)
         {
             return NotFound(new { error = "Recipe not found." });
@@ -539,14 +545,22 @@ public class RecipesController(
         {
             return replaceStepsEditableCheck;
         }
-        var stepTexts = (request.Steps ?? [])
-            .Select(text => text.Trim())
-            .Where(text => text.Length > 0)
-            .ToList();
+        var stepTexts = RecipeContentBuilder.CollapseRepeatedSteps(
+            (request.Steps ?? [])
+                .Select(text => text.Trim())
+                .Where(text => text.Length > 0)
+                .ToList());
         if (stepTexts.Count > RequestLimits.MaxRecipeSteps)
         {
             return BadRequest(new { error = $"At most {RequestLimits.MaxRecipeSteps} steps are allowed." });
         }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await db.Recipes
+            .Where(r => r.Id == recipeId)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(r => r.UpdatedAt, DateTime.UtcNow),
+                cancellationToken);
         await db.RecipeSteps
             .Where(s => s.RecipeId == recipeId)
             .ExecuteDeleteAsync(cancellationToken);
@@ -565,9 +579,10 @@ public class RecipesController(
         {
             db.RecipeSteps.AddRange(entities);
         }
-        RecipeContentBuilder.SetCookingSteps(recipe.Content, stepTexts);
+        recipe.Content = RecipeContentBuilder.WithCookingSteps(recipe.Content, stepTexts);
         recipe.UpdatedAt = now;
         await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         var dtos = entities.Select(RecipeAccessService.ToStepDto).ToList();
         return Ok(dtos);
     }

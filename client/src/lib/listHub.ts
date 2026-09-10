@@ -4,6 +4,7 @@ import {
   HubConnectionState,
   LogLevel,
 } from "@microsoft/signalr";
+import { API_BASE } from "./apiBase";
 import { CSRF_HEADER_NAME } from "./apiClient";
 import { getCsrfToken } from "./csrf";
 
@@ -16,7 +17,7 @@ export type ConnectionStatus =
   | "disconnected";
 
 export function createListHubConnection(): HubConnection {
-  const base = import.meta.env.VITE_API_URL ?? "";
+  const base = API_BASE;
   const headers: Record<string, string> = {};
   const csrf = getCsrfToken();
   if (csrf) {

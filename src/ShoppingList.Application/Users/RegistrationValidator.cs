@@ -87,17 +87,24 @@ public static partial class RegistrationValidator
         return null;
     }
 
-    public static string? ValidateGender(string? gender, IReadOnlySet<string> allowedGenders)
+    public static readonly HashSet<string> AllowedGenders =
+        new(StringComparer.OrdinalIgnoreCase) { "Male", "Female", "Non-binary" };
+
+    public static string? ValidateGender(string? gender)
     {
         if (string.IsNullOrWhiteSpace(gender))
         {
             return null;
         }
 
-        return allowedGenders.Contains(gender.Trim())
+        return AllowedGenders.Contains(gender.Trim())
             ? null
             : "Select a valid gender option.";
     }
+
+    public static string CanonicalGender(string gender) =>
+        AllowedGenders.First(value =>
+            string.Equals(value, gender.Trim(), StringComparison.OrdinalIgnoreCase));
 
     public static string FormatPhone(string phone)
     {

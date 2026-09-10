@@ -105,4 +105,47 @@ public class RecipeContentBuilderTests
         Assert.Equal("Ingredients", block.Description);
         Assert.Equal(2, block.Ingredients.Count);
     }
+
+    [Fact]
+    public void WithCookingSteps_replaces_steps_instead_of_appending()
+    {
+        var existing = new ShoppingList.Domain.Recipes.RecipeContentDocument
+        {
+            Recipe = new ShoppingList.Domain.Recipes.RecipeContentRoot
+            {
+                CookingSteps = ["Preheat", "Mix", "Bake"]
+            }
+        };
+
+        var updated = RecipeContentBuilder.WithCookingSteps(existing, ["Mix", "Bake"]);
+
+        Assert.Equal(["Mix", "Bake"], updated.Recipe.CookingSteps);
+        Assert.Equal(["Preheat", "Mix", "Bake"], existing.Recipe.CookingSteps);
+    }
+
+    [Fact]
+    public void CollapseRepeatedSteps_collapses_a_doubled_sequence()
+    {
+        var collapsed = RecipeContentBuilder.CollapseRepeatedSteps(
+            ["Mix", "Bake", "Cool", "Mix", "Bake", "Cool"]);
+
+        Assert.Equal(["Mix", "Bake", "Cool"], collapsed);
+    }
+
+    [Fact]
+    public void CollapseRepeatedSteps_keeps_intentionally_repeated_adjacent_steps()
+    {
+        var collapsed = RecipeContentBuilder.CollapseRepeatedSteps(["Mix", "Mix"]);
+
+        Assert.Equal(["Mix", "Mix"], collapsed);
+    }
+
+    [Fact]
+    public void CollapseRepeatedSteps_collapses_a_sequence_that_was_doubled_twice()
+    {
+        var collapsed = RecipeContentBuilder.CollapseRepeatedSteps(
+            ["Mix", "Bake", "Mix", "Bake", "Mix", "Bake", "Mix", "Bake"]);
+
+        Assert.Equal(["Mix", "Bake"], collapsed);
+    }
 }

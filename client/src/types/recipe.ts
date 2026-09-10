@@ -168,13 +168,36 @@ function inferSectionGroupsFromIngredients(
   }));
 }
 
+export function collapseRepeatedSteps(steps: string[]): string[] {
+  let current = [...steps];
+  while (current.length >= 4 && current.length % 2 === 0) {
+    const half = current.length / 2;
+    const duplicated = current.slice(0, half).every((step, index) => step === current[index + half]);
+    if (!duplicated) {
+      break;
+    }
+
+    current = current.slice(0, half);
+  }
+
+  return current;
+}
+
+export function resolveCookingSteps(
+  content: RecipeContentDocument | null | undefined,
+  steps: Array<string | { text: string }>,
+): string[] {
+  const fromRows = steps.map((step) => (typeof step === "string" ? step : step.text));
+  const resolved = fromRows.length > 0 ? fromRows : (content?.recipe.cookingSteps ?? []);
+  return collapseRepeatedSteps(resolved);
+}
+
 export function resolveRecipeDisplayData(
   content: RecipeContentDocument | null | undefined,
   ingredients: RecipeIngredient[],
   steps: string[],
 ): { subCategories: RecipeSubCategoryBlock[]; cookingSteps: string[]; hasMultipleSubsections: boolean } {
-  const cookingSteps =
-    steps.length > 0 ? steps : (content?.recipe.cookingSteps ?? []);
+  const cookingSteps = resolveCookingSteps(content, steps);
 
   const fromContent = getRecipeSubCategories(content);
   const fromIngredients = buildSubCategoriesFromIngredients(

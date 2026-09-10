@@ -4,7 +4,7 @@ export function isDefaultSectionTitle(section: string | null | undefined): boole
   return !section?.trim() || section.trim().toLowerCase() === DEFAULT_SECTION_TITLE.toLowerCase();
 }
 
-export function isUsableSectionTitle(section: string | null | undefined): boolean {
+function isUsableSectionTitle(section: string | null | undefined): boolean {
   const trimmed = section?.trim();
   if (!trimmed || isDefaultSectionTitle(trimmed)) {
     return false;
@@ -25,7 +25,7 @@ export function toPersistedSection(section: string | null | undefined): string |
   return isUsableSectionTitle(trimmed) ? trimmed! : null;
 }
 
-export function sectionLabel(section: string | null | undefined): string {
+function sectionLabel(section: string | null | undefined): string {
   return toPersistedSection(section) ?? DEFAULT_SECTION_TITLE;
 }
 

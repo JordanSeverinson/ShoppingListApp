@@ -501,4 +501,141 @@ public class IngredientLineParserTests
         Assert.All(content.Ingredients, ingredient => Assert.Null(ingredient.Section));
         Assert.DoesNotContain(content.Ingredients, i => i.Name.Contains("L]", StringComparison.Ordinal));
     }
+
+    [Fact]
+    public void ParseRecipeContent_exported_card_splits_unnumbered_step_paragraphs()
+    {
+        const string ocr = """
+            Cook In Shop Out
+            New
+            Cake
+            2 cups All-purpose flour
+            2 large Eggs
+            1/2 cup Sour cream
+            1 teaspoon Lemon extract
+            1 teaspoon Lemon zest
+            1 teaspoon Baking soda
+            1/2 teaspoon Salt
+            Glaze
+            2 cups Confectioners sugar, plus more as needed
+            2 tablespoons 1% milk
+            6 tablespoons Salted butter
+            1/4 teaspoon Kosher salt
+            1/2 teaspoon Lemon extract
+            2 tablespoons Lemon zest
+            Cooking Steps
+            Preheat the oven to 375 degrees F (190 degrees C). Grease a 10 x15-inch
+            baking pan.
+            Bring 1 cup butter and water to a boil in a large saucepan. Remove from
+            heat, and stir in flour, sugar, eggs, sour cream, lemon extract, baking soda,
+            and salt until smooth. Pour batter into the prepared pan and spread into
+            an even layer.
+            Bake in the preheated oven until cake is golden and a toothpick inserted
+            near the center comes out clean, 20 to 22 minutes. Cool for 15 minutes.
+            Meanwhile, for glaze, place confectioner's sugar in a bowl.
+            Add milk, butter, and salt to a small saucepan over medium heat, and
+            bring just to a boil, stirring occasionally; pour over confectioner's sugar
+            and whisk to combine. If glaze is too thin, whisk in more confectioner's
+            sugar. Whisk in lemon extract and lemon zest.
+            """;
+
+        var content = IngredientLineParser.ParseRecipeContent(ocr);
+
+        Assert.Equal(5, content.Steps.Count);
+        Assert.StartsWith("Preheat", content.Steps[0], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("baking pan", content.Steps[0], StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith("Bring", content.Steps[1], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("even layer", content.Steps[1], StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith("Bake", content.Steps[2], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Cool for 15 minutes", content.Steps[2], StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith("Meanwhile", content.Steps[3], StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith("Add milk", content.Steps[4], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(content.Ingredients, i => i.Name.Contains("All-purpose flour", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(content.Ingredients, i => i.Section == "Cake");
+        Assert.Contains(content.Ingredients, i => i.Section == "Glaze");
+    }
+
+    [Fact]
+    public void ParseRecipeContent_splits_meanwhile_and_ocr_junk_before_add()
+    {
+        const string ocr = """
+            Cooking Steps
+            Bake in the preheated oven until cake is golden and a toothpick inserted near the center comes out clean, 20 to 22 minutes. Cool for 15 minutes Meanwhile, for glaze, place confectioner's sugar in a bowl. e Add milk, butter, and salt to a small saucepan over medium heat.
+            """;
+
+        var content = IngredientLineParser.ParseRecipeContent(ocr);
+
+        Assert.Equal(3, content.Steps.Count);
+        Assert.StartsWith("Bake", content.Steps[0], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Cool for 15 minutes", content.Steps[0], StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Meanwhile", content.Steps[0], StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith("Meanwhile", content.Steps[1], StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Add milk", content.Steps[1], StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith("Add milk", content.Steps[2], StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ParseRecipeContent_splits_steps_prefixed_with_ocr_circle_glyphs()
+    {
+        const string ocr = """
+            Cooking Steps
+            `   Preheat the oven to 375 degrees F (190 degrees C). Grease a 10 x15-inch
+            baking pan.
+            �   Bring 1 cup butter and water to a boil in a large saucepan. Remove from
+            heat, and stir in flour, sugar, eggs, sour cream, lemon extract, baking soda,
+            and salt until smooth. Pour batter into the prepared pan and spread into
+            an even layer.
+            �   Bake in the preheated oven until cake is golden and a toothpick inserted
+            near the center comes out clean, 20 to 22 minutes. Cool for 15 minutes.
+            �   Meanwhile, for glaze, place confectioner's sugar in a bowl.
+            �   Add milk, butter, and salt to a small saucepan over medium heat.
+            """;
+
+        var content = IngredientLineParser.ParseRecipeContent(ocr);
+
+        Assert.Equal(5, content.Steps.Count);
+        Assert.StartsWith("Preheat", content.Steps[0], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Grease", content.Steps[0], StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith("Bring", content.Steps[1], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Remove from", content.Steps[1], StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith("Bake", content.Steps[2], StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith("Meanwhile", content.Steps[3], StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith("Add milk", content.Steps[4], StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ParseRecipeContent_keeps_wrapped_step_continuation_together()
+    {
+        const string ocr = """
+            Cooking Steps
+            Bring 1 cup butter and water to a boil in a large saucepan. Remove from
+            o
+            heat, and stir in flour, sugar, eggs, sour cream, lemon extract, baking soda, and salt until smooth. Pour batter into the prepared pan and spread into an even layer.
+            Bake in the preheated oven until cake is golden.
+            """;
+
+        var content = IngredientLineParser.ParseRecipeContent(ocr);
+
+        Assert.Equal(2, content.Steps.Count);
+        Assert.StartsWith("Bring", content.Steps[0], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Remove from heat", content.Steps[0], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("even layer", content.Steps[0], StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(content.Steps, step => step.StartsWith("heat,", StringComparison.Ordinal));
+        Assert.StartsWith("Bake", content.Steps[1], StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ScoreOcrResult_prefers_split_steps_over_a_mashed_step_with_one_extra_ingredient()
+    {
+        var mashed = new ParsedRecipeContentDto(
+            Enumerable.Repeat(new ParsedIngredientDto("Flour", "1 cup", "Pantry", "Cake"), 14).ToList(),
+            ["Preheat the oven. Bring butter to a boil. Bake the cake."]);
+        var split = new ParsedRecipeContentDto(
+            Enumerable.Repeat(new ParsedIngredientDto("Flour", "1 cup", "Pantry", "Cake"), 13).ToList(),
+            ["Preheat the oven.", "Bring butter to a boil.", "Bake the cake."]);
+
+        Assert.True(
+            TesseractIngredientParserService.ScoreOcrResult(split, RecipeImageImportMode.FullRecipeWithSteps)
+            > TesseractIngredientParserService.ScoreOcrResult(mashed, RecipeImageImportMode.FullRecipeWithSteps));
+    }
 }

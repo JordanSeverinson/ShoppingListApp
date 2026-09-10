@@ -5,6 +5,7 @@ import * as recipesApi from "../api/recipes";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { PendingRecipeShareCard } from "../components/PendingRecipeShareCard";
 import { RecipeCard } from "../components/RecipeCard";
+import { useAutoDismissMessage } from "../hooks/useAutoDismissMessage";
 import { APP_NAME } from "../lib/appName";
 import { clearDeleteQueue } from "../lib/deleteQueue";
 import { RECIPE_TYPES, type RecipeType } from "../lib/recipeTypes";
@@ -53,17 +54,7 @@ export function RecipesPage() {
     }
   }, [listLoading, pendingShares.length]);
 
-  useEffect(() => {
-    if (!statusMessage) {
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      setStatusMessage(null);
-    }, 3000);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [statusMessage]);
+  useAutoDismissMessage(statusMessage, setStatusMessage);
 
   const filteredRecipes = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();

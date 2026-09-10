@@ -47,7 +47,8 @@ public static class RecipeContentBuilder
             Recipe = new RecipeContentRoot
             {
                 SubCategories = BuildSubCategories(ingredientDtos),
-                CookingSteps = steps.OrderBy(s => s.SortOrder).Select(s => s.Text).ToList()
+                CookingSteps = CollapseRepeatedSteps(
+                    steps.OrderBy(s => s.SortOrder).Select(s => s.Text).ToList())
             }
         };
     }
@@ -188,10 +189,59 @@ public static class RecipeContentBuilder
 
     public static void SetCookingSteps(RecipeContentDocument content, IReadOnlyList<string> steps)
     {
-        content.Recipe.CookingSteps = steps
-            .Select(step => step.Trim())
-            .Where(step => step.Length > 0)
-            .ToList();
+        content.Recipe.CookingSteps = NormalizeSteps(steps);
+    }
+
+    public static RecipeContentDocument WithCookingSteps(
+        RecipeContentDocument existing,
+        IReadOnlyList<string> steps) =>
+        new()
+        {
+            Recipe = new RecipeContentRoot
+            {
+                SubCategories = existing.Recipe.SubCategories
+                    .Select(block => new RecipeSubCategoryBlock
+                    {
+                        Description = block.Description,
+                        Ingredients = block.Ingredients.ToList()
+                    })
+                    .ToList(),
+                CookingSteps = NormalizeSteps(steps)
+            }
+        };
+
+    private static List<string> NormalizeSteps(IReadOnlyList<string> steps) =>
+        CollapseRepeatedSteps(
+            steps
+                .Select(step => step.Trim())
+                .Where(step => step.Length > 0)
+                .ToList());
+
+    public static List<string> CollapseRepeatedSteps(IReadOnlyList<string> steps)
+    {
+        var current = steps.ToList();
+        while (current.Count >= 4 && current.Count % 2 == 0)
+        {
+            var half = current.Count / 2;
+            var duplicated = true;
+            for (var i = 0; i < half; i++)
+            {
+                if (!string.Equals(current[i], current[i + half], StringComparison.Ordinal))
+                {
+                    duplicated = false;
+                    break;
+                }
+            }
+
+            if (!duplicated)
+            {
+                break;
+            }
+
+            current = current.Take(half).ToList();
+        }
+
+        return current;
     }
 
     public static RecipeContentDocument MergeImportedContent(

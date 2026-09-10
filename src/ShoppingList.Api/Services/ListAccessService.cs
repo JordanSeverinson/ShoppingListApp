@@ -59,11 +59,9 @@ public class ListAccessService(ApplicationDbContext db)
             && p.Status == ListShareStatus.Accepted
             && p.PermissionLevel is PermissionLevel.Edit or PermissionLevel.Admin);
 
-    public static bool CanRename(ShoppingListEntity list, Guid userId) => CanEdit(list, userId);
-
     public static ActionResult? RequireRenamable(ShoppingListEntity list, Guid userId)
     {
-        if (!CanRename(list, userId))
+        if (!CanEdit(list, userId))
         {
             return new NotFoundObjectResult(new { error = ApiErrors.ListNotFound });
         }

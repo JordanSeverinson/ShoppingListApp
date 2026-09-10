@@ -1,4 +1,5 @@
-const API_BASE = import.meta.env.VITE_API_URL ?? "";
+import { API_BASE } from "./apiBase";
+
 const CSRF_COOKIE = "csrf_token";
 
 let memoryToken: string | null = null;
