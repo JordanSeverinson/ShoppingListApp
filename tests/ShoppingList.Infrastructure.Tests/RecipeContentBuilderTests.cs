@@ -55,4 +55,54 @@ public class RecipeContentBuilderTests
             line => line.Contains("butter", StringComparison.OrdinalIgnoreCase));
         Assert.Equal("Glaze", content.Recipe.SubCategories[1].Description);
     }
+
+    [Fact]
+    public void MergeImportedContent_full_recipe_replaces_previous_steps()
+    {
+        var existing = new ShoppingList.Domain.Recipes.RecipeContentDocument
+        {
+            Recipe = new ShoppingList.Domain.Recipes.RecipeContentRoot
+            {
+                CookingSteps = ["Dress the tomatoes, onions, and cucumber."],
+                SubCategories =
+                [
+                    new() { Description = "Ingredients", Ingredients = ["1 cup water"] }
+                ]
+            }
+        };
+        var imported = new ShoppingList.Domain.Recipes.RecipeContentDocument
+        {
+            Recipe = new ShoppingList.Domain.Recipes.RecipeContentRoot
+            {
+                CookingSteps = ["Season the chicken with salt and pepper."],
+                SubCategories =
+                [
+                    new() { Description = "Ingredients", Ingredients = ["4 chicken breasts"] }
+                ]
+            }
+        };
+
+        var merged = RecipeContentBuilder.MergeImportedContent(existing, imported, replaceCookingSteps: true);
+
+        Assert.Single(merged.Recipe.CookingSteps);
+        Assert.StartsWith("Season", merged.Recipe.CookingSteps[0], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(merged.Recipe.SubCategories[0].Ingredients, line => line.Contains("chicken"));
+        Assert.DoesNotContain(merged.Recipe.SubCategories[0].Ingredients, line => line.Contains("water"));
+    }
+
+    [Fact]
+    public void FromParsed_single_ocr_junk_section_becomes_ingredients()
+    {
+        var ingredients = new List<ParsedIngredientDto>
+        {
+            new("Chicken breasts", "4", "Meat", "L]"),
+            new("Olive oil", "3 Tbsp", "Pantry", "L]"),
+        };
+
+        var content = RecipeContentBuilder.FromParsed(new ParsedRecipeContentDto(ingredients, []));
+
+        var block = Assert.Single(content.Recipe.SubCategories);
+        Assert.Equal("Ingredients", block.Description);
+        Assert.Equal(2, block.Ingredients.Count);
+    }
 }

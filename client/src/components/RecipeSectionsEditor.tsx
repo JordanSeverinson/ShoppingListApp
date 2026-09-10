@@ -8,6 +8,11 @@ import type {
   UpdateRecipeIngredientPayload,
 } from "../types/recipe";
 
+const INGREDIENT_GRID_COLS =
+  "sm:grid-cols-[2rem_8rem_minmax(0,1fr)_8.5rem_7.5rem]";
+const INGREDIENT_GRID =
+  "grid grid-cols-1 gap-2 sm:grid-cols-[2rem_8rem_minmax(0,1fr)_8.5rem_7.5rem] sm:items-center";
+
 type RecipeEditorSection = {
   key: string;
   title: string;
@@ -26,7 +31,7 @@ function buildEditorSections(
     }
   }
 
-  if (sectionTitles.length === 0) {
+  if (sectionTitles.length <= 1) {
     return [{ key: crypto.randomUUID(), title: DEFAULT_SECTION_TITLE }];
   }
 
@@ -40,6 +45,14 @@ function groupIngredientsBySection(
   const groups = new Map<string, RecipeIngredient[]>();
   for (const section of sections) {
     groups.set(section.key, []);
+  }
+
+  if (sections.length === 1) {
+    groups.set(
+      sections[0].key,
+      [...ingredients].sort((a, b) => a.sortOrder - b.sortOrder),
+    );
+    return groups;
   }
 
   const titleToKey = new Map(sections.map((section) => [section.title, section.key]));
@@ -376,12 +389,14 @@ function SectionCard({
 
       {isOpen && (
         <div className="space-y-3 p-3 sm:p-4">
-          <div className="hidden gap-2 px-1 text-xs font-medium uppercase tracking-wide text-muted sm:grid sm:grid-cols-[1.75rem_5.5rem_minmax(0,1fr)_8.5rem_auto]">
-            <span className="sr-only">Reorder</span>
+          <div
+            className={`hidden gap-2 text-xs font-medium uppercase tracking-wide text-muted sm:grid ${INGREDIENT_GRID_COLS} sm:items-end`}
+          >
+            <span aria-hidden="true" />
             <span>Quantity</span>
             <span>Ingredient</span>
             <span>Category</span>
-            <span className="text-right">Actions</span>
+            <span>Actions</span>
           </div>
 
           {ingredients.length === 0 ? (
@@ -444,51 +459,98 @@ function EditableIngredientRow({
   const [category, setCategory] = useState(ingredient.category || "Other");
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const draftRef = useRef({ quantity, name, category });
   const saveTimer = useRef<number | null>(null);
+  const persistGeneration = useRef(0);
+  const dirtyRef = useRef(false);
+  const persistDraftRef = useRef<(draft: { quantity: string; name: string; category: string }) => Promise<void>>(
+    async () => undefined,
+  );
+
+  draftRef.current = { quantity, name, category };
 
   useEffect(() => {
+    if (dirtyRef.current) {
+      return;
+    }
+
     setQuantity(ingredient.quantity ?? "");
     setName(ingredient.name);
     setCategory(ingredient.category || "Other");
   }, [ingredient.id, ingredient.quantity, ingredient.name, ingredient.category]);
 
-  function scheduleSave(draftFields: {
+  async function persistDraft(draftFields: {
     quantity: string;
     name: string;
     category: string;
   }) {
     if (saveTimer.current) {
       window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
     }
 
-    saveTimer.current = window.setTimeout(() => {
-      void persist(draftFields);
-    }, 400);
-  }
-
-  async function persist(draftFields: {
-    quantity: string;
-    name: string;
-    category: string;
-  }) {
     const trimmedName = draftFields.name.trim();
     if (!trimmedName) {
       setError("Ingredient name is required.");
       return;
     }
 
+    const payload: UpdateRecipeIngredientPayload = {
+      name: trimmedName,
+      quantity: draftFields.quantity.trim() || null,
+      category: draftFields.category,
+      section: toPersistedSection(sectionTitle),
+      sortOrder: ingredient.sortOrder,
+    };
+
+    const unchanged =
+      payload.name === ingredient.name
+      && payload.quantity === (ingredient.quantity ?? null)
+      && payload.category === (ingredient.category || "Other")
+      && (payload.section ?? null) === toPersistedSection(ingredient.section);
+
+    if (unchanged) {
+      dirtyRef.current = false;
+      setError(null);
+      return;
+    }
+
+    const generation = ++persistGeneration.current;
     setError(null);
     try {
-      await onUpdate(ingredient.id, {
-        name: trimmedName,
-        quantity: draftFields.quantity.trim() || null,
-        category: draftFields.category,
-        section: toPersistedSection(sectionTitle),
-        sortOrder: ingredient.sortOrder,
-      });
+      await onUpdate(ingredient.id, payload);
+      if (generation === persistGeneration.current) {
+        dirtyRef.current = false;
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save ingredient");
+      if (generation === persistGeneration.current) {
+        setError(err instanceof Error ? err.message : "Could not save ingredient");
+      }
     }
+  }
+
+  persistDraftRef.current = persistDraft;
+
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) {
+        window.clearTimeout(saveTimer.current);
+      }
+      if (dirtyRef.current) {
+        void persistDraftRef.current(draftRef.current);
+      }
+    };
+  }, []);
+
+  function scheduleSave() {
+    dirtyRef.current = true;
+    if (saveTimer.current) {
+      window.clearTimeout(saveTimer.current);
+    }
+
+    saveTimer.current = window.setTimeout(() => {
+      void persistDraft(draftRef.current);
+    }, 400);
   }
 
   function handleDragStart(event: DragEvent<HTMLButtonElement>) {
@@ -518,12 +580,12 @@ function EditableIngredientRow({
       onDragLeave={() => setDragOver(false)}
       onDrop={handleDrop}
     >
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1.75rem_5.5rem_minmax(0,1fr)_8.5rem_auto] sm:items-center">
+      <div className={INGREDIENT_GRID}>
         <button
           type="button"
           draggable
           onDragStart={handleDragStart}
-          className="hidden cursor-grab items-center justify-center rounded-lg p-1 text-muted transition hover:bg-brand-50 hover:text-brand-700 active:cursor-grabbing sm:inline-flex"
+          className="hidden h-8 w-8 cursor-grab items-center justify-center rounded-lg p-1 text-muted transition hover:bg-brand-50 hover:text-brand-700 active:cursor-grabbing sm:inline-flex"
           aria-label={`Drag to reorder ${ingredient.name}`}
         >
           <GripVertical className="h-4 w-4" aria-hidden />
@@ -532,11 +594,10 @@ function EditableIngredientRow({
           type="text"
           value={quantity}
           onChange={(event) => {
-            const value = event.target.value;
-            setQuantity(value);
-            scheduleSave({ quantity: value, name, category });
+            setQuantity(event.target.value);
+            scheduleSave();
           }}
-          onBlur={() => void persist({ quantity, name, category })}
+          onBlur={() => void persistDraft(draftRef.current)}
           placeholder="Qty"
           aria-label="Quantity"
           className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
@@ -545,11 +606,10 @@ function EditableIngredientRow({
           type="text"
           value={name}
           onChange={(event) => {
-            const value = event.target.value;
-            setName(value);
-            scheduleSave({ quantity, name: value, category });
+            setName(event.target.value);
+            scheduleSave();
           }}
-          onBlur={() => void persist({ quantity, name, category })}
+          onBlur={() => void persistDraft(draftRef.current)}
           placeholder="Ingredient name"
           aria-label="Ingredient name"
           className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
@@ -559,7 +619,8 @@ function EditableIngredientRow({
           onChange={(event) => {
             const value = event.target.value;
             setCategory(value);
-            void persist({ quantity, name, category: value });
+            dirtyRef.current = true;
+            void persistDraft({ ...draftRef.current, category: value });
           }}
           aria-label="Category"
           className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
@@ -570,7 +631,7 @@ function EditableIngredientRow({
             </option>
           ))}
         </select>
-        <div className="flex items-center justify-end gap-1">
+        <div className="flex items-center justify-start gap-1">
           <button
             type="button"
             onClick={onMoveUp}
@@ -650,7 +711,7 @@ function AddIngredientRow({
 
   return (
     <div className="space-y-2 border-t border-border pt-3">
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1.75rem_5.5rem_minmax(0,1fr)_8.5rem_auto] sm:items-center">
+      <div className={INGREDIENT_GRID}>
         <span className="hidden sm:block" aria-hidden />
         <input
           type="text"
@@ -690,7 +751,7 @@ function AddIngredientRow({
           type="button"
           disabled={submitting || !name.trim()}
           onClick={() => void handleAdd()}
-          className="inline-flex items-center justify-center gap-1 rounded-xl bg-brand-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex h-9 w-full items-center justify-center gap-1 rounded-xl bg-brand-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Plus className="h-4 w-4" aria-hidden />
           Add

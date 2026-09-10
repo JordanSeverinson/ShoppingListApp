@@ -699,12 +699,26 @@ public class RecipesController(
                 [],
                 "No ingredients or steps could be extracted from the image."));
         }
+        var replaceFullRecipe = mode == RecipeImageImportMode.FullRecipeWithSteps;
         var importedContent = RecipeContentBuilder.FromParsed(parsed);
-        recipe.Content = RecipeContentBuilder.MergeImportedContent(recipe.Content, importedContent);
-        var nextSortOrder = await db.RecipeIngredients
-            .Where(i => i.RecipeId == recipeId)
-            .Select(i => (int?)i.SortOrder)
-            .MaxAsync(cancellationToken) ?? 0;
+        recipe.Content = RecipeContentBuilder.MergeImportedContent(
+            recipe.Content,
+            importedContent,
+            replaceCookingSteps: replaceFullRecipe || mode == RecipeImageImportMode.CookingStepsOnly);
+        var nextSortOrder = 0;
+        if (replaceFullRecipe && parsedIngredients.Count > 0)
+        {
+            await db.RecipeIngredients
+                .Where(i => i.RecipeId == recipeId)
+                .ExecuteDeleteAsync(cancellationToken);
+        }
+        else
+        {
+            nextSortOrder = await db.RecipeIngredients
+                .Where(i => i.RecipeId == recipeId)
+                .Select(i => (int?)i.SortOrder)
+                .MaxAsync(cancellationToken) ?? 0;
+        }
         var now = DateTime.UtcNow;
         var entities = new List<RecipeIngredient>();
         foreach (var item in parsedIngredients)
@@ -727,7 +741,7 @@ public class RecipesController(
             db.RecipeIngredients.AddRange(entities);
         }
         var stepDtos = new List<RecipeStepDto>();
-        if (parsedSteps.Count > 0)
+        if (replaceFullRecipe || parsedSteps.Count > 0)
         {
             await db.RecipeSteps
                 .Where(s => s.RecipeId == recipeId)

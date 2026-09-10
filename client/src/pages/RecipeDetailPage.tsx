@@ -38,6 +38,7 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
   const [shareOpen, setShareOpen] = useState(false);
   const [shareStatusMessage, setShareStatusMessage] = useState<string | null>(null);
   const deleteQueueKey = recipeId ? `recipe:${recipeId}` : null;
+  const ingredientUpdateChain = useRef(new Map<string, Promise<void>>());
 
   const patchIngredients = useCallback(
     (mutate: (ingredients: RecipeIngredient[]) => RecipeIngredient[]) => {
@@ -205,26 +206,35 @@ export function RecipeDetailPage({ readOnly = false }: { readOnly?: boolean }) {
     if (!recipeId) {
       return;
     }
-    const updatedIngredient = await recipesApi.updateRecipeIngredient(
-      recipeId,
-      ingredientId,
-      payload,
-    );
-    let cookingSteps: string[] = [];
-    let nextIngredients: RecipeIngredient[] = [];
-    setRecipe((previous) => {
-      if (!previous) {
-        return previous;
-      }
-      cookingSteps = cookingStepsFromRecipe(previous);
-      nextIngredients = sortIngredients(
-        previous.ingredients.map((item) =>
-          item.id === ingredientId ? updatedIngredient : item,
-        ),
-      );
-      return { ...previous, ingredients: nextIngredients };
-    });
-    await syncRecipeContent(nextIngredients, cookingSteps);
+
+    const previous = ingredientUpdateChain.current.get(ingredientId) ?? Promise.resolve();
+    const run = previous
+      .catch(() => undefined)
+      .then(async () => {
+        const updatedIngredient = await recipesApi.updateRecipeIngredient(
+          recipeId,
+          ingredientId,
+          payload,
+        );
+        let cookingSteps: string[] = [];
+        let nextIngredients: RecipeIngredient[] = [];
+        setRecipe((current) => {
+          if (!current) {
+            return current;
+          }
+          cookingSteps = cookingStepsFromRecipe(current);
+          nextIngredients = sortIngredients(
+            current.ingredients.map((item) =>
+              item.id === ingredientId ? updatedIngredient : item,
+            ),
+          );
+          return { ...current, ingredients: nextIngredients };
+        });
+        await syncRecipeContent(nextIngredients, cookingSteps);
+      });
+
+    ingredientUpdateChain.current.set(ingredientId, run);
+    await run;
   }
 
   async function handleReorderIngredients(orderedIds: string[]) {

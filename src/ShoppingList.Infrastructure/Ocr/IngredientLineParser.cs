@@ -81,11 +81,17 @@ internal static partial class IngredientLineParser
     [GeneratedRegex(@"^(?<!\d)(\d{1,2})$", RegexOptions.Compiled)]
     private static partial Regex StandaloneStepNumberPattern();
 
-    [GeneratedRegex(@"^Step\s+\d+\s*:?\s*(.*)$", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+    [GeneratedRegex(@"^Step\s*\d+\s*[:.\-\u2013\u2014)]?\s*(.*)$", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
     private static partial Regex StepHeaderPattern();
 
-    [GeneratedRegex(@"(?<=\S)\s+(?=Step\s+\d+\b)", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+    [GeneratedRegex(@"(?<=\S)\s*(?=Step\s*\d+\b)", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
     private static partial Regex EmbeddedStepSplitPattern();
+
+    [GeneratedRegex(@"\bStep(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+    private static partial Regex StepNumberGluePattern();
+
+    [GeneratedRegex(@"^Step\s*\d+\s*[:.\-\u2013\u2014)]?\s*", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+    private static partial Regex LeadingStepLabelPattern();
 
     [GeneratedRegex(@"(?<=\.)\s+(?=\d+\.\s)", RegexOptions.Compiled)]
     private static partial Regex EmbeddedNumberedStepSplitPattern();
@@ -120,6 +126,9 @@ internal static partial class IngredientLineParser
     [GeneratedRegex(@"[0O]{4,}|[^a-zA-Z0-9\s,\.\-/']{5,}", RegexOptions.Compiled)]
     private static partial Regex GarbagePattern();
 
+    [GeneratedRegex(@"\s+", RegexOptions.Compiled)]
+    private static partial Regex CompactWhitespace();
+
     public static IReadOnlyList<ParsedIngredientDto> Parse(string ocrText) =>
         ParseRecipeContent(ocrText).Ingredients;
 
@@ -152,6 +161,7 @@ internal static partial class IngredientLineParser
         var directionLines = new List<string>();
         var inDirections = false;
         var pastIngredientsHeader = false;
+        var hasIngredientsHeader = rawLines.Any(IsIngredientsHeader);
 
         foreach (var line in rawLines)
         {
@@ -164,7 +174,7 @@ internal static partial class IngredientLineParser
 
             if (inDirections)
             {
-                if (!IsGarbage(line) && IsSubstantiveDirectionLine(line))
+                if (!IsGarbage(line) && IsSubstantiveDirectionLine(line) && !IsExportChrome(line))
                 {
                     directionLines.Add(line);
                 }
@@ -178,14 +188,14 @@ internal static partial class IngredientLineParser
                 continue;
             }
 
-            if (!pastIngredientsHeader && IsLikelyIngredientsBlockStart(line))
-            {
-                pastIngredientsHeader = true;
-            }
-
             if (!pastIngredientsHeader)
             {
-                continue;
+                if (hasIngredientsHeader || !IsLikelyIngredientsBlockStart(line))
+                {
+                    continue;
+                }
+
+                pastIngredientsHeader = true;
             }
 
             if (ShouldSkipIngredientMeta(line) || IsGarbage(line) || IsCheckboxOcrArtifact(line))
@@ -210,6 +220,7 @@ internal static partial class IngredientLineParser
         var rawLines = ExpandToIngredientLines(ocrText);
         var ingredientLines = new List<string>();
         var pastIngredientsHeader = false;
+        var hasIngredientsHeader = rawLines.Any(IsIngredientsHeader);
 
         foreach (var line in rawLines)
         {
@@ -224,14 +235,14 @@ internal static partial class IngredientLineParser
                 continue;
             }
 
-            if (!pastIngredientsHeader && IsLikelyIngredientsBlockStart(line))
-            {
-                pastIngredientsHeader = true;
-            }
-
             if (!pastIngredientsHeader)
             {
-                continue;
+                if (hasIngredientsHeader || !IsLikelyIngredientsBlockStart(line))
+                {
+                    continue;
+                }
+
+                pastIngredientsHeader = true;
             }
 
             if (ShouldSkipIngredientMeta(line) || IsGarbage(line) || IsCheckboxOcrArtifact(line))
@@ -427,7 +438,7 @@ internal static partial class IngredientLineParser
         }
 
         return steps
-            .Select(step => step.Trim())
+            .Select(StripLeadingStepLabels)
             .Where(step => step.Length >= 3)
             .ToList();
     }
@@ -471,25 +482,42 @@ internal static partial class IngredientLineParser
         var stepHeaderMatch = StepHeaderPattern().Match(trimmed);
         if (stepHeaderMatch.Success)
         {
-            stepText = stepHeaderMatch.Groups[1].Value.Trim();
+            stepText = StripLeadingStepLabels(stepHeaderMatch.Groups[1].Value);
             return true;
         }
 
         var numberedMatch = NumberedStepPattern().Match(trimmed);
         if (numberedMatch.Success)
         {
-            stepText = numberedMatch.Groups[2].Value.Trim();
+            stepText = StripLeadingStepLabels(numberedMatch.Groups[2].Value);
             return true;
         }
 
         var bareNumberedMatch = BareNumberedStepPattern().Match(trimmed);
         if (bareNumberedMatch.Success)
         {
-            stepText = bareNumberedMatch.Groups[2].Value.Trim();
+            stepText = StripLeadingStepLabels(bareNumberedMatch.Groups[2].Value);
             return true;
         }
 
         return false;
+    }
+
+    private static string StripLeadingStepLabels(string step)
+    {
+        var current = step.Trim();
+        while (current.Length > 0)
+        {
+            var stripped = LeadingStepLabelPattern().Replace(current, string.Empty, 1).Trim();
+            if (stripped.Length == current.Length)
+            {
+                break;
+            }
+
+            current = stripped;
+        }
+
+        return current.All(c => !char.IsLetterOrDigit(c)) ? string.Empty : current;
     }
 
     private static bool IsStepHeaderLine(string line)
@@ -507,10 +535,23 @@ internal static partial class IngredientLineParser
 
     private static bool IsDirectionsHeader(string line)
     {
+        var lower = line.ToLowerInvariant().Trim();
+        var compact = CompactWhitespace().Replace(lower, string.Empty).TrimEnd(':');
+        var normalized = lower.TrimEnd(':');
+        return normalized is "directions" or "instructions" or "method" or "preparation"
+            or "steps" or "cooking steps" or "cooking step" or "cooking instructions"
+            || compact is "cookingsteps" or "cookingstep" or "cookinginstructions"
+            || normalized.StartsWith("directions:", StringComparison.Ordinal)
+            || normalized.StartsWith("instructions:", StringComparison.Ordinal)
+            || normalized.StartsWith("cooking steps", StringComparison.Ordinal);
+    }
+
+    private static bool IsExportChrome(string line)
+    {
         var lower = line.ToLowerInvariant();
-        return lower is "directions" or "instructions" or "method" or "preparation"
-            || lower.StartsWith("directions:", StringComparison.Ordinal)
-            || lower.StartsWith("instructions:", StringComparison.Ordinal);
+        return lower is "cook in shop out"
+            || lower.StartsWith("no cooking steps", StringComparison.Ordinal)
+            || lower.StartsWith("no ingredients for this recipe", StringComparison.Ordinal);
     }
 
     private static bool IsLikelyIngredientsBlockStart(string line) =>
@@ -534,11 +575,16 @@ internal static partial class IngredientLineParser
             return true;
         }
 
-        return false;
+        return IsExportChrome(line);
     }
 
     private static bool IsSectionHeader(string line)
     {
+        if (IsDirectionsHeader(line) || IsExportChrome(line))
+        {
+            return false;
+        }
+
         if (HasQuantity(line))
         {
             return false;
@@ -570,7 +616,7 @@ internal static partial class IngredientLineParser
         }
 
         var cleaned = CleanSectionName(line);
-        if (cleaned.Length == 0 || cleaned.Length > 24)
+        if (cleaned.Length == 0 || cleaned.Length > 24 || !RecipeSectionNames.IsUsable(cleaned))
         {
             return false;
         }
@@ -768,6 +814,7 @@ internal static partial class IngredientLineParser
             .Replace("⅔", "2/3", StringComparison.Ordinal);
         line = BulletPrefixPattern().Replace(line, string.Empty);
         line = FixLeadingQuantityOcrErrors(line);
+        line = StepNumberGluePattern().Replace(line, "Step $1");
         line = DigitLetterPattern().Replace(line, "$1 $2");
         line = Regex.Replace(line, @"\s{2,}", " ");
         return line.Trim();

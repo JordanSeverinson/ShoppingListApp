@@ -9,8 +9,10 @@ public static class RecipeContentBuilder
     public static RecipeContentDocument FromParsed(ParsedRecipeContentDto parsed)
     {
         var ingredients = parsed.Ingredients.ToList();
+        DropUnusableSections(ingredients);
         InferSectionGroups(ingredients);
         FoldUnlabeledIntoFirstNamedSection(ingredients);
+        CollapseSingleSection(ingredients);
 
         return new RecipeContentDocument
         {
@@ -35,7 +37,10 @@ public static class RecipeContentBuilder
                 i.Section))
             .ToList();
 
+        DropUnusableSections(ingredientDtos);
         InferSectionGroups(ingredientDtos);
+        FoldUnlabeledIntoFirstNamedSection(ingredientDtos);
+        CollapseSingleSection(ingredientDtos);
 
         return new RecipeContentDocument
         {
@@ -45,6 +50,36 @@ public static class RecipeContentBuilder
                 CookingSteps = steps.OrderBy(s => s.SortOrder).Select(s => s.Text).ToList()
             }
         };
+    }
+
+    internal static void DropUnusableSections(List<ParsedIngredientDto> ingredients)
+    {
+        for (var i = 0; i < ingredients.Count; i++)
+        {
+            if (!RecipeSectionNames.IsUsable(ingredients[i].Section))
+            {
+                ingredients[i] = ingredients[i] with { Section = null };
+            }
+        }
+    }
+
+    internal static void CollapseSingleSection(List<ParsedIngredientDto> ingredients)
+    {
+        var named = ingredients
+            .Select(ingredient => RecipeSectionNames.Persist(ingredient.Section))
+            .Where(section => section is not null)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (named.Count > 1)
+        {
+            return;
+        }
+
+        for (var i = 0; i < ingredients.Count; i++)
+        {
+            ingredients[i] = ingredients[i] with { Section = null };
+        }
     }
 
     /// <summary>
@@ -161,7 +196,8 @@ public static class RecipeContentBuilder
 
     public static RecipeContentDocument MergeImportedContent(
         RecipeContentDocument existing,
-        RecipeContentDocument imported)
+        RecipeContentDocument imported,
+        bool replaceCookingSteps = false)
     {
         if (imported.Recipe.SubCategories.Count > 0)
         {
@@ -174,7 +210,7 @@ public static class RecipeContentBuilder
                 .ToList();
         }
 
-        if (imported.Recipe.CookingSteps.Count > 0)
+        if (replaceCookingSteps || imported.Recipe.CookingSteps.Count > 0)
         {
             existing.Recipe.CookingSteps = imported.Recipe.CookingSteps.ToList();
         }

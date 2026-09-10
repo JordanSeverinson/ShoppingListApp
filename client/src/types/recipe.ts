@@ -192,13 +192,25 @@ export function resolveRecipeDisplayData(
     rawBlocks = fromIngredients;
   }
 
+  const namedUsable = rawBlocks.filter((block) => toPersistedSection(block.description));
+  if (namedUsable.length <= 1) {
+    rawBlocks = [
+      {
+        description: DEFAULT_SECTION_TITLE,
+        ingredients: rawBlocks.flatMap((block) => block.ingredients),
+      },
+    ].filter((block) => block.ingredients.length > 0);
+  } else {
+    rawBlocks = foldPlaceholderSiblingBlocks(rawBlocks);
+  }
+
   return {
     subCategories:
       rawBlocks.length <= 1
         ? normalizeSubCategoriesForDisplay(rawBlocks)
-        : foldPlaceholderSiblingBlocks(rawBlocks),
+        : rawBlocks,
     cookingSteps,
-    hasMultipleSubsections: rawBlocks.length > 1,
+    hasMultipleSubsections: namedUsable.length > 1,
   };
 }
 

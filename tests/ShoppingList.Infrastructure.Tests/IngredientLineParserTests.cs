@@ -168,7 +168,8 @@ public class IngredientLineParserTests
         Assert.Contains("Bake", content.Steps[2], StringComparison.OrdinalIgnoreCase);
         Assert.Contains("glaze", content.Steps[3], StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Whisk in lemon extract", content.Steps[4], StringComparison.OrdinalIgnoreCase);
-        Assert.False(content.Steps[0].StartsWith("Step", StringComparison.OrdinalIgnoreCase));
+        Assert.All(content.Steps, step =>
+            Assert.False(step.StartsWith("Step", StringComparison.OrdinalIgnoreCase)));
     }
 
     [Fact]
@@ -367,5 +368,137 @@ public class IngredientLineParserTests
         Assert.Equal(2, content.Steps.Count);
         Assert.Contains("Dress", content.Steps[0], StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Let stand", content.Steps[1], StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ParseRecipeContent_strips_ocr_glued_step_labels()
+    {
+        const string ocr = """
+            Directions
+            Step1
+            Preheat the oven to 375 degrees F (190 degrees C). Grease a 10x15-inch baking pan.
+            Step2
+            Bring 1 cup butter and water to a boil in a large saucepan.
+            Step3Bake in the preheated oven until cake is golden.
+            """;
+
+        var content = IngredientLineParser.ParseRecipeContent(ocr);
+
+        Assert.Equal(3, content.Steps.Count);
+        Assert.StartsWith("Preheat", content.Steps[0], StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith("Bring", content.Steps[1], StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith("Bake", content.Steps[2], StringComparison.OrdinalIgnoreCase);
+        Assert.All(content.Steps, step =>
+            Assert.False(step.StartsWith("Step", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [Fact]
+    public void ParseRecipeContent_strips_step_label_left_inside_numbered_line()
+    {
+        const string ocr = """
+            Directions
+            1. Step 1 Preheat the oven to 375 degrees F (190 degrees C).
+            2. Step 2 Bring 1 cup butter and water to a boil.
+            """;
+
+        var content = IngredientLineParser.ParseRecipeContent(ocr);
+
+        Assert.Equal(2, content.Steps.Count);
+        Assert.StartsWith("Preheat", content.Steps[0], StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith("Bring", content.Steps[1], StringComparison.OrdinalIgnoreCase);
+        Assert.All(content.Steps, step =>
+            Assert.False(step.StartsWith("Step", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [Fact]
+    public void ParseRecipeContent_strips_step_labels_when_jammed_into_instruction()
+    {
+        const string ocr = """
+            Directions
+            Step1Preheat the oven to 375 degrees F (190 degrees C). Grease a 10x15-inch baking pan. Step2Bring 1 cup butter and water to a boil in a large saucepan.
+            """;
+
+        var content = IngredientLineParser.ParseRecipeContent(ocr);
+
+        Assert.Equal(2, content.Steps.Count);
+        Assert.StartsWith("Preheat", content.Steps[0], StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith("Bring", content.Steps[1], StringComparison.OrdinalIgnoreCase);
+        Assert.All(content.Steps, step =>
+            Assert.False(step.StartsWith("Step", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [Fact]
+    public void ParseRecipeContent_exported_card_keeps_steps_with_the_matching_recipe()
+    {
+        const string ocr = """
+            Cook In Shop Out
+            Creamy Tuscan Chicken
+            Ingredients
+            3 Tbsp extra-virgin olive oil, divided
+            4 boneless, skinless chicken breasts
+            Kosher salt
+            Freshly ground black pepper
+            2 garlic cloves, finely chopped
+            1 Tbsp fresh thyme leaves
+            Cooking Steps
+            1 Season the chicken with salt and pepper.
+            2 Sear the chicken in a skillet until golden.
+            """;
+
+        var content = IngredientLineParser.ParseRecipeContent(ocr);
+
+        Assert.DoesNotContain(content.Ingredients, i =>
+            i.Name.Contains("Cook In Shop Out", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(content.Ingredients, i =>
+            i.Name.Contains("Tuscan", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(content.Ingredients, i =>
+            i.Name.Contains("chicken", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(content.Ingredients, i =>
+            i.Name.Contains("Dress", StringComparison.OrdinalIgnoreCase)
+            || i.Name.Contains("Season", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(2, content.Steps.Count);
+        Assert.StartsWith("Season", content.Steps[0], StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith("Sear", content.Steps[1], StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ParseRecipeContent_exported_card_does_not_treat_cooking_steps_as_ingredients()
+    {
+        const string ocr = """
+            Cook In Shop Out
+            Test4
+            Ingredients
+            3 Tbsp extra-virgin olive oil, divided
+            4 boneless, skinless chicken breasts
+            Cooking Steps
+            1 Dress the tomatoes, onions, and cucumber with olive oil, red wine vinegar, salt, and pepper.
+            2 Let stand while you prepare dinner, about 20 minutes.
+            """;
+
+        var content = IngredientLineParser.ParseRecipeContent(ocr);
+
+        Assert.Equal(2, content.Ingredients.Count);
+        Assert.Equal(2, content.Steps.Count);
+        Assert.StartsWith("Dress", content.Steps[0], StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith("Let stand", content.Steps[1], StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(content.Ingredients, i =>
+            i.Name.Contains("tomatoes", StringComparison.OrdinalIgnoreCase));
+        Assert.All(content.Ingredients, ingredient => Assert.Null(ingredient.Section));
+    }
+
+    [Fact]
+    public void ParseRecipeContent_does_not_treat_ocr_junk_as_a_section()
+    {
+        const string ocr = """
+            Ingredients
+            L]
+            3 Tbsp extra-virgin olive oil, divided
+            4 boneless, skinless chicken breasts
+            """;
+
+        var content = IngredientLineParser.ParseRecipeContent(ocr);
+
+        Assert.All(content.Ingredients, ingredient => Assert.Null(ingredient.Section));
+        Assert.DoesNotContain(content.Ingredients, i => i.Name.Contains("L]", StringComparison.Ordinal));
     }
 }
