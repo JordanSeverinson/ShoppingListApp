@@ -46,11 +46,14 @@ public record ShareListResponse(int InvitedCount, int SkippedCount, string Messa
 
 public record CreateItemRequest(string Name, string? Quantity, string Category);
 
+public record ItemEditBase(string Name, string? Quantity, string Category);
+
 public record UpdateItemRequest(
     string? Name,
     string? Quantity,
     string? Category,
-    bool? IsChecked);
+    bool? IsChecked,
+    ItemEditBase? Base);
 
 public record CheckAllItemsRequest(string? Category);
 

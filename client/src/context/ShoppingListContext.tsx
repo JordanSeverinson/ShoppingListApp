@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -15,7 +16,8 @@ import {
   mapHubState,
   type ConnectionStatus,
 } from "../lib/listHub";
-import type { CreateItemPayload, ListDetail, ListItem } from "../types/list";
+import { conflictItem, isItemConflict } from "../lib/listItemEdit";
+import type { CreateItemPayload, ListDetail, ListItem, UpdateListItemPayload } from "../types/list";
 
 interface ShoppingListContextValue {
   listId: string;
@@ -31,10 +33,7 @@ interface ShoppingListContextValue {
   addItem: (payload: CreateItemPayload) => Promise<void>;
   toggleItem: (itemId: string, isChecked: boolean) => Promise<void>;
   checkAllItems: (category?: string) => Promise<void>;
-  updateItem: (
-    itemId: string,
-    patch: Partial<Pick<ListItem, "name" | "quantity" | "category">>,
-  ) => Promise<void>;
+  updateItem: (itemId: string, patch: UpdateListItemPayload) => Promise<void>;
   removeItem: (itemId: string) => void;
   importRecipe: (recipeId: string) => Promise<{ added: number; message: string }>;
 }
@@ -74,6 +73,7 @@ export function ShoppingListProvider({
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>("connecting");
   const deleteKey = `list:${listId}`;
+  const itemUpdateChain = useRef(new Map<string, Promise<void>>());
 
   const patchItems = useCallback((mutate: (items: ListItem[]) => ListItem[]) => {
     setDetail((current) =>
@@ -300,15 +300,28 @@ export function ShoppingListProvider({
   );
 
   const updateItem = useCallback(
-    async (
-      itemId: string,
-      patch: Partial<Pick<ListItem, "name" | "quantity" | "category">>,
-    ) => {
+    async (itemId: string, patch: UpdateListItemPayload) => {
       if (!canEdit) {
         return;
       }
-      const updated = await listsApi.updateListItem(listId, itemId, patch);
-      patchItems((items) => upsertItem(items, updated));
+
+      const previous = itemUpdateChain.current.get(itemId) ?? Promise.resolve();
+      const run = previous
+        .catch(() => undefined)
+        .then(async () => {
+          try {
+            const updated = await listsApi.updateListItem(listId, itemId, patch);
+            patchItems((items) => upsertItem(items, updated));
+          } catch (err) {
+            if (isItemConflict(err)) {
+              patchItems((items) => upsertItem(items, conflictItem(err)!));
+            }
+            throw err;
+          }
+        });
+
+      itemUpdateChain.current.set(itemId, run);
+      await run;
     },
     [canEdit, listId, patchItems],
   );

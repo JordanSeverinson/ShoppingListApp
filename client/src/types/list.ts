@@ -74,6 +74,18 @@ export interface CreateItemPayload {
   category: string;
 }
 
+export interface UpdateListItemPayload {
+  name?: string;
+  quantity?: string | null;
+  category?: string;
+  isChecked?: boolean;
+  base?: {
+    name: string;
+    quantity: string | null;
+    category: string;
+  };
+}
+
 export interface CheckAllItemsResponse {
   updatedCount: number;
   itemIds: string[];

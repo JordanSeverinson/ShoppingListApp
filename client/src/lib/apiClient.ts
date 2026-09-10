@@ -47,11 +47,17 @@ export async function handleResponse<T>(
   }
 
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { error?: string; code?: string } | null;
+    const body = (await response.json().catch(() => null)) as
+      | { error?: string; code?: string }
+      | Record<string, unknown>
+      | null;
     throw new ApiError(
-      body?.error ?? `Request failed (${response.status})`,
+      (body && "error" in body && typeof body.error === "string"
+        ? body.error
+        : `Request failed (${response.status})`),
       response.status,
-      body?.code,
+      body && "code" in body && typeof body.code === "string" ? body.code : undefined,
+      body ?? undefined,
     );
   }
 

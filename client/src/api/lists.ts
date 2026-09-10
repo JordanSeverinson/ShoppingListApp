@@ -8,6 +8,7 @@ import type {
   ListSummary,
   ListSummaryResponse,
   ShareListResponse,
+  UpdateListItemPayload,
 } from "../types/list";
 
 export function fetchMyLists(): Promise<ListSummaryResponse> {
@@ -75,7 +76,7 @@ export function createListItem(listId: string, payload: CreateItemPayload): Prom
 export function updateListItem(
   listId: string,
   itemId: string,
-  payload: Partial<Pick<ListItem, "name" | "quantity" | "category" | "isChecked">>,
+  payload: UpdateListItemPayload,
 ): Promise<ListItem> {
   return apiRequest<ListItem>(`/api/lists/${listId}/items/${itemId}`, {
     method: "PATCH",

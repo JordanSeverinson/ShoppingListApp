@@ -346,15 +346,21 @@ public class ListsController(
             return NotFound(new { error = "Item not found." });
         }
 
+        if (request.Base is not null && !MatchesEditBase(item, request.Base))
+        {
+            return Conflict(new
+            {
+                error = "This item was updated by someone else. Review the latest values and save again.",
+                code = "ITEM_CONFLICT",
+                item = ToEventDto(item),
+            });
+        }
+
         var toggled = false;
 
         if (request.Name is not null)
         {
             item.Name = request.Name.Trim();
-        }
-
-        if (request.Quantity is not null)
-        {
             item.Quantity = string.IsNullOrWhiteSpace(request.Quantity) ? null : request.Quantity.Trim();
         }
 
@@ -693,7 +699,16 @@ public class ListsController(
         request.IsChecked is not null
         && request.Name is null
         && request.Quantity is null
-        && request.Category is null;
+        && request.Category is null
+        && request.Base is null;
+
+    private static bool MatchesEditBase(ListItem item, ItemEditBase expected)
+    {
+        var expectedQuantity = string.IsNullOrWhiteSpace(expected.Quantity) ? null : expected.Quantity.Trim();
+        return string.Equals(item.Name, expected.Name.Trim(), StringComparison.Ordinal)
+            && string.Equals(item.Quantity, expectedQuantity, StringComparison.Ordinal)
+            && string.Equals(item.Category, expected.Category.Trim(), StringComparison.Ordinal);
+    }
 
     private static ListItemEventDto ToEventDto(ListItem item) =>
         new(item.Id, item.ShoppingListId, item.Name, item.Quantity, item.Category, item.IsChecked, item.SortOrder);

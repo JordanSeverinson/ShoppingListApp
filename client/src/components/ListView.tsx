@@ -1,14 +1,18 @@
 import { Check, CheckCheck, Pencil, Trash2, X } from "lucide-react";
-import { memo, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useShoppingList } from "../context/ShoppingListContext";
 import { CATEGORIES } from "../lib/categories";
-import type { ListItem } from "../types/list";
+import { conflictItem, editFieldsToBase, itemToEditFields, mergeRemoteEdit } from "../lib/listItemEdit";
+import type { ListItem, UpdateListItemPayload } from "../types/list";
 
-function groupByCategory(items: ListItem[]): Map<string, ListItem[]> {
+function groupByCategory(
+  items: ListItem[],
+  editingGroups: Record<string, string>,
+): Map<string, ListItem[]> {
   const groups = new Map<string, ListItem[]>();
 
   for (const item of items) {
-    const key = item.category || "Other";
+    const key = editingGroups[item.id] || item.category || "Other";
     const bucket = groups.get(key) ?? [];
     bucket.push(item);
     groups.set(key, bucket);
@@ -43,44 +47,136 @@ const ItemRow = memo(function ItemRow({
   readOnly,
   onToggle,
   onUpdate,
+  onEditingChange,
   onRemove,
 }: {
   item: ListItem;
   readOnly: boolean;
   onToggle: (itemId: string, isChecked: boolean) => void;
-  onUpdate: (
-    itemId: string,
-    patch: Partial<Pick<ListItem, "name" | "quantity" | "category">>,
-  ) => Promise<void>;
+  onUpdate: (itemId: string, patch: UpdateListItemPayload) => Promise<void>;
+  onEditingChange: (itemId: string, category: string | null) => void;
   onRemove: (itemId: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(item.name);
   const [quantity, setQuantity] = useState(item.quantity ?? "");
   const [category, setCategory] = useState(item.category);
-  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const baselineRef = useRef(itemToEditFields(item));
+  const draftRef = useRef({ name, quantity, category });
+  draftRef.current = { name, quantity, category };
+
+  useEffect(() => {
+    onEditingChange(item.id, editing ? baselineRef.current.category : null);
+    return () => onEditingChange(item.id, null);
+  }, [editing, item.id, onEditingChange]);
+
+  useEffect(() => {
+    if (!editing) {
+      const fields = itemToEditFields(item);
+      baselineRef.current = fields;
+      setName(fields.name);
+      setQuantity(fields.quantity);
+      setCategory(fields.category);
+      return;
+    }
+
+    const merged = mergeRemoteEdit(
+      draftRef.current,
+      baselineRef.current,
+      itemToEditFields(item),
+    );
+    baselineRef.current = merged.baseline;
+    setName(merged.draft.name);
+    setQuantity(merged.draft.quantity);
+    setCategory(merged.draft.category);
+    if (merged.conflicted) {
+      setError("Someone else changed this item. Review your edits and save again.");
+    }
+  }, [editing, item.category, item.id, item.name, item.quantity]);
+
+  function beginEdit() {
+    const fields = itemToEditFields(item);
+    baselineRef.current = fields;
+    setName(fields.name);
+    setQuantity(fields.quantity);
+    setCategory(fields.category);
+    setError(null);
+    setEditing(true);
+  }
+
+  function handleCancel() {
+    const saved = itemToEditFields(item);
+    setName(saved.name);
+    setQuantity(saved.quantity);
+    setCategory(saved.category);
+    setError(null);
+    setEditing(false);
+  }
 
   async function handleSave() {
-    setBusy(true);
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setError("Item name is required.");
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
     try {
       await onUpdate(item.id, {
-        name: name.trim(),
+        name: trimmedName,
         quantity: quantity.trim() || null,
         category,
+        base: editFieldsToBase(baselineRef.current),
       });
       setEditing(false);
+    } catch (err) {
+      const remote = conflictItem(err);
+      if (remote) {
+        const merged = mergeRemoteEdit(
+          { name, quantity, category },
+          baselineRef.current,
+          itemToEditFields(remote),
+        );
+        baselineRef.current = merged.baseline;
+        setName(merged.draft.name);
+        setQuantity(merged.draft.quantity);
+        setCategory(merged.draft.category);
+        if (merged.conflicted) {
+          setError("Someone else changed this item. Review your edits and save again.");
+        } else {
+          try {
+            await onUpdate(item.id, {
+              name: merged.draft.name.trim(),
+              quantity: merged.draft.quantity.trim() || null,
+              category: merged.draft.category,
+              base: editFieldsToBase(merged.baseline),
+            });
+            setEditing(false);
+            return;
+          } catch {
+            setError("Someone else changed this item. Review your edits and save again.");
+            return;
+          }
+        }
+        return;
+      }
+
+      setError(err instanceof Error ? err.message : "Could not save item");
     } finally {
-      setBusy(false);
+      setSaving(false);
     }
   }
 
-  async function handleDelete() {
+  function handleDelete() {
     onRemove(item.id);
   }
 
   if (editing && !readOnly) {
     return (
-      <li className="flex flex-col gap-2 rounded-xl border border-brand-200 bg-brand-50/50 p-3 sm:flex-row sm:items-center">
+      <li className="flex flex-col gap-2 rounded-xl border border-brand-200 bg-brand-50/50 p-3 sm:flex-row sm:items-center sm:flex-wrap">
         <input
           value={name}
           onChange={(event) => setName(event.target.value)}
@@ -107,7 +203,7 @@ const ItemRow = memo(function ItemRow({
           <button
             type="button"
             onClick={() => void handleSave()}
-            disabled={busy || !name.trim()}
+            disabled={saving || !name.trim()}
             className="rounded-lg bg-brand-600 p-2 text-white hover:bg-brand-700 disabled:opacity-50"
             aria-label="Save"
           >
@@ -115,13 +211,15 @@ const ItemRow = memo(function ItemRow({
           </button>
           <button
             type="button"
-            onClick={() => setEditing(false)}
-            className="rounded-lg border border-border p-2 text-muted hover:bg-white"
+            onClick={handleCancel}
+            disabled={saving}
+            className="rounded-lg border border-border p-2 text-muted hover:bg-white disabled:opacity-50"
             aria-label="Cancel"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
+        {error && <p className="basis-full text-xs text-red-600">{error}</p>}
       </li>
     );
   }
@@ -156,7 +254,7 @@ const ItemRow = memo(function ItemRow({
         <div className="flex shrink-0 gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
           <button
             type="button"
-            onClick={() => setEditing(true)}
+            onClick={beginEdit}
             className="rounded-lg p-2 text-muted hover:bg-stone-100 hover:text-ink"
             aria-label={`Edit ${item.name}`}
           >
@@ -164,7 +262,7 @@ const ItemRow = memo(function ItemRow({
           </button>
           <button
             type="button"
-            onClick={() => void handleDelete()}
+            onClick={() => handleDelete()}
             className="rounded-lg p-2 text-muted hover:bg-red-50 hover:text-red-600"
             aria-label={`Delete ${item.name}`}
           >
@@ -179,13 +277,37 @@ const ItemRow = memo(function ItemRow({
 export function ListView({ readOnly = false }: { readOnly?: boolean }) {
   const { items, loading, error, toggleItem, checkAllItems, updateItem, removeItem } =
     useShoppingList();
+  const [editingGroups, setEditingGroups] = useState<Record<string, string>>({});
 
-  const grouped = useMemo(() => groupByCategory(items), [items]);
+  const grouped = useMemo(
+    () => groupByCategory(items, editingGroups),
+    [editingGroups, items],
+  );
   const checkedCount = useMemo(
     () => items.reduce((count, item) => count + (item.isChecked ? 1 : 0), 0),
     [items],
   );
   const uncheckedCount = items.length - checkedCount;
+
+  function handleEditingChange(itemId: string, category: string | null) {
+    setEditingGroups((current) => {
+      if (category === null) {
+        if (!(itemId in current)) {
+          return current;
+        }
+
+        const next = { ...current };
+        delete next[itemId];
+        return next;
+      }
+
+      if (current[itemId] === category) {
+        return current;
+      }
+
+      return { ...current, [itemId]: category };
+    });
+  }
 
   async function handleCheckAll(category?: string) {
     await checkAllItems(category);
@@ -265,6 +387,7 @@ export function ListView({ readOnly = false }: { readOnly?: boolean }) {
                 readOnly={readOnly}
                 onToggle={toggleItem}
                 onUpdate={updateItem}
+                onEditingChange={handleEditingChange}
                 onRemove={removeItem}
               />
             ))}
